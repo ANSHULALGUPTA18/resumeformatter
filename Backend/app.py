@@ -181,6 +181,17 @@ def format_resumes():
             # Parse resume with advanced parser
             resume_data = parse_resume(file_path, file_type)
             
+            # Add CAI contact data from request if provided
+            if 'cai_contact' in request.form:
+                try:
+                    import json
+                    cai_data = json.loads(request.form['cai_contact'])
+                    resume_data['cai_contact'] = cai_data
+                    resume_data['edit_cai_contact'] = request.form.get('edit_cai_contact') == 'true'
+                    print(f"  ✏️  CAI Contact edit enabled: {cai_data}")
+                except Exception as e:
+                    print(f"  ⚠️  Error parsing CAI contact data: {e}")
+            
             if resume_data:
                 # Format resume with intelligent formatter
                 # Determine output extension based on template type

@@ -216,29 +216,109 @@ class ResumeParser:
         return ""
     
     def _extract_summary(self):
-        """Extract professional summary/objective"""
-        summary_keywords = ['summary', 'objective', 'profile', 'about']
+        """Extract professional summary/objective - with or without explicit heading."""
+        summary_keywords = ['summary', 'objective', 'profile', 'about', 'professional summary']
         
+        # METHOD 1: Look for explicit summary section heading
         for i, line in enumerate(self.lines):
-            if any(keyword in line.lower() for keyword in summary_keywords):
+            if any(keyword in line.lower() for keyword in summary_keywords) and len(line) < 50:
                 # Get next few lines as summary
                 summary_lines = []
-                for j in range(i+1, min(i+6, len(self.lines))):
+                for j in range(i+1, min(i+10, len(self.lines))):
                     if self._is_section_header(self.lines[j]):
                         break
-                    summary_lines.append(self.lines[j])
-                return ' '.join(summary_lines)
+                    if self.lines[j].strip():
+                        summary_lines.append(self.lines[j])
+                if summary_lines:
+                    return ' '.join(summary_lines)
+        
+        # METHOD 2: Detect implicit summary - a descriptive paragraph before experience section
+        # Find where the experience section starts
+        exp_start = None
+        exp_keywords = ['experience', 'work history', 'employment', 'professional experience', 'work experience', 'career history']
+        for i, line in enumerate(self.lines):
+            if any(kw in line.lower() for kw in exp_keywords) and len(line) < 50:
+                exp_start = i
+                break
+        
+        # Search lines after contact info but before experience section
+        contact_end = 0
+        for i, line in enumerate(self.lines[:20]):
+            if self._has_contact_info(line):
+                contact_end = i + 1
+        
+        # Look for summary-like paragraphs in the header area (after contact, before experience)
+        search_start = contact_end
+        search_end = exp_start if exp_start else 20
+        
+        for i in range(search_start, min(search_end, len(self.lines))):
+            line = self.lines[i].strip()
+            
+            # Skip section headers, very short lines, and contact info
+            if self._is_section_header(line) or len(line) < 80 or self._has_contact_info(line):
+                continue
+            
+            # Check if this looks like summary text
+            if self._looks_like_summary_text(line):
+                # Accumulate multi-line summary
+                summary_lines = [line]
+                j = i + 1
+                while j < min(i + 8, len(self.lines)):
+                    next_line = self.lines[j].strip()
+                    # Stop at section headers or if we hit experience/education
+                    if self._is_section_header(next_line):
+                        break
+                    # Continue if it looks like part of the summary
+                    if next_line and len(next_line) > 40 and not self._has_contact_info(next_line):
+                        summary_lines.append(next_line)
+                    j += 1
+                
+                result = ' '.join(summary_lines)
+                if len(result) > 100:  # Ensure it's substantial enough
+                    return result
+        
         return ""
     
     def _extract_experience(self):
         """Extract work experience details with robust pairing (dates + role/company)."""
         experiences = []
-        section = self._find_section(['experience', 'work history', 'employment', 'professional experience'])
-        if not section:
-            print("  ⚠️  No experience section found")
-            return experiences
         
-        print(f"  📋 Found experience section with {len(section)} lines")
+        # CRITICAL: Search ENTIRE document for employment entries, not just experience section
+        # This handles resumes where education/skills sections appear in the middle of employment
+        section = self._find_section(['experience', 'work history', 'employment', 'professional experience', 'work experience', 'career history'])
+        
+        if not section:
+            print("  ⚠️  No experience section found, searching entire document")
+            # Fallback: use all lines
+            section = self.lines
+        else:
+            print(f"  📋 Found experience section with {len(section)} lines")
+            # ENHANCEMENT: Also scan lines AFTER the experience section for additional jobs
+            # (in case education section interrupted the employment section)
+            # BUT: Stop at SKILLS or final EDUCATION section to avoid mixing content
+            exp_section_end = -1
+            for idx, line in enumerate(self.lines):
+                if any(keyword in line.lower() for keyword in ['experience', 'work history', 'employment']):
+                    exp_section_end = idx
+                    break
+            
+            if exp_section_end > 0:
+                # Add remaining lines but STOP at SKILLS/EDUCATION sections
+                remaining_lines = []
+                for idx in range(exp_section_end + len(section) + 1, len(self.lines)):
+                    line = self.lines[idx]
+                    line_lower = line.lower().strip()
+                    
+                    # Stop if we hit SKILLS or EDUCATION section (these are separate)
+                    if any(kw in line_lower for kw in ['skills', 'education', 'certifications', 'projects']) and len(line) < 50:
+                        print(f"  🛑 Stopped extended search at: '{line[:40]}'")
+                        break
+                    
+                    remaining_lines.append(line)
+                
+                if remaining_lines:
+                    section.extend(remaining_lines)
+                    print(f"  📋 Extended search to include {len(remaining_lines)} additional lines")
 
         # Normalize lines and strip bullets
         lines = [self._strip_bullet(self._normalize_text(l)) for l in section if l and l.strip()]
@@ -256,25 +336,84 @@ class ResumeParser:
                 i += 1
                 continue
 
-            # Case A: Line with dates (role + dates, company on next line)
+            # Case A: Line with dates - intelligently detect company/role/dates in any format
             if self._contains_date_range(line):
                 duration = self._clean_years(line)
                 
-                # Extract role by removing dates from current line
-                role = self._extract_role_from_dated_line(line)
+                # Extract text by removing dates from current line
+                text_without_dates = self._extract_role_from_dated_line(line)
                 
-                # Next non-empty line should be company name
+                company = ''
+                role = ''
+                
+                # Strategy: Check previous line, current line, and next line to find company and role
+                
+                # Check PREVIOUS line (might be company)
+                prev_line = ''
+                if i > 0 and not self._is_section_header(lines[i-1]) and not self._contains_date_range(lines[i-1]) and not self._looks_like_detail_bullet(lines[i-1]):
+                    prev_line = lines[i-1].strip()
+                
+                # Check NEXT line (might be role or company)
+                next_line = ''
                 j = i + 1
                 while j < len(lines) and len(lines[j].strip()) < 3:
                     j += 1
+                if j < len(lines) and not self._is_section_header(lines[j]) and not self._contains_date_range(lines[j]):
+                    next_line = lines[j].strip()
                 
-                company = ''
-                if j < len(lines) and not self._is_section_header(lines[j]):
-                    company_line = lines[j]
-                    # Remove location info (City, State, etc.)
-                    company = self._strip_location(company_line)
-                    # Clean up any trailing dashes/separators
-                    company = re.sub(r'\s*[–—-]\s*$', '', company).strip()
+                # DECISION LOGIC: Determine what each line contains
+                
+                # If current line has location markers (-, ,), it's likely company+location
+                has_location = any(marker in text_without_dates for marker in [' - ', ', ', ' – ', ' — '])
+                
+                # If current line has role keywords, it might be role
+                has_role_keyword = any(kw in text_without_dates.lower() for kw in ['manager', 'coordinator', 'director', 'specialist', 'analyst', 'engineer', 'developer', 'consultant', 'officer', 'assistant', 'supervisor', 'accountant', 'administrator'])
+                
+                if has_location and not has_role_keyword:
+                    # Current line: Company+Location+Dates
+                    # Next line: Role
+                    company = self._strip_location(text_without_dates).strip()
+                    role = next_line
+                    print(f"    📌 Format: Company+Location+Dates | Role on next line")
+                    print(f"       Company: '{company}' | Role: '{role}'")
+                    
+                elif has_location and has_role_keyword:
+                    # Current line might have: Company+Location+Role+Dates (all in one)
+                    # Try to split by role keyword
+                    parts = text_without_dates.split()
+                    # Simple heuristic: everything before role keyword is company
+                    for idx, word in enumerate(parts):
+                        if any(kw in word.lower() for kw in ['manager', 'coordinator', 'director', 'specialist', 'analyst', 'engineer', 'developer', 'consultant', 'officer', 'assistant', 'supervisor', 'accountant']):
+                            company = ' '.join(parts[:idx]).strip()
+                            role = ' '.join(parts[idx:]).strip()
+                            break
+                    
+                    if not company:
+                        # Fallback: strip location and use as company
+                        company = self._strip_location(text_without_dates).strip()
+                        role = next_line if next_line else text_without_dates
+                    
+                    print(f"    📌 Format: Company+Location+Role+Dates (combined)")
+                    print(f"       Company: '{company}' | Role: '{role}'")
+                    
+                elif prev_line:
+                    # Previous line: Company+Location
+                    # Current line: Role+Dates
+                    company = self._strip_location(prev_line).strip()
+                    role = text_without_dates.strip()
+                    print(f"    📌 Format: Company on previous | Role+Dates on current")
+                    print(f"       Company: '{company}' | Role: '{role}'")
+                    
+                else:
+                    # Fallback: Current line is role+dates, look for company elsewhere
+                    role = text_without_dates.strip()
+                    if next_line:
+                        company = self._strip_location(next_line).strip()
+                        print(f"    📌 Format: Role+Dates on current | Company on next")
+                    else:
+                        company = ''
+                        print(f"    📌 Format: Role+Dates only (no company found)")
+                    print(f"       Company: '{company}' | Role: '{role}'")
                 
                 role = role.strip()
                 company = company.strip()
@@ -288,12 +427,47 @@ class ResumeParser:
                 }
 
                 # Collect following detail bullets until next date or header
-                k = j + 1
+                k = i + 1
                 while k < len(lines):
-                    if self._contains_date_range(lines[k]) or self._is_section_header(lines[k]):
+                    # CRITICAL FIX: Only break if it's a NEW job entry (not just a detail with dates)
+                    # A new job entry has dates AND looks like a role/company line (short, title case)
+                    # A detail bullet with dates is long and starts with action verb
+                    if self._is_section_header(lines[k]):
                         break
-                    detail = lines[k].strip()
-                    if detail and len(detail) > 10:  # Skip very short lines
+                    
+                    # Check if this is a new job entry (has dates AND looks like header, not detail)
+                    if self._contains_date_range(lines[k]):
+                        # CRITICAL: Check if this looks like a job entry (company + role + dates)
+                        # Job entries have: location markers, title case words, or role keywords
+                        line_k = lines[k]
+                        has_location = any(marker in line_k for marker in [' - ', ', ', ' – ', '-'])
+                        has_role_keywords = any(kw in line_k.lower() for kw in ['manager', 'coordinator', 'director', 'specialist', 'analyst', 'engineer', 'developer', 'consultant', 'officer', 'assistant', 'supervisor'])
+                        
+                        # If it has location markers or role keywords, it's likely a job entry
+                        if has_location or has_role_keywords:
+                            print(f"    🔄 Found new job entry while collecting details: '{line_k[:60]}'")
+                            # It's a new job entry, stop collecting details
+                            break
+                        
+                        # If it looks like a detail bullet, keep it as detail
+                        if self._looks_like_detail_bullet(line_k):
+                            detail = line_k.strip()
+                            if detail and len(detail) > 10:
+                                exp['details'].append(detail)
+                            k += 1
+                            continue
+                        else:
+                            # It's a new job entry, stop collecting details
+                            break
+                    
+                    detail = self._strip_bullet(lines[k]).strip()
+                    # Merge tiny fragments like "Word", "Access)" or "reporting"
+                    if exp['details'] and self._should_merge_fragment(exp['details'][-1], detail):
+                        exp['details'][-1] = self._merge_fragment(exp['details'][-1], detail)
+                        k += 1
+                        continue
+                    # Skip very short lines and lines that look like section summaries
+                    if detail and len(detail) > 10 and not self._looks_like_summary_text(detail):
                         exp['details'].append(detail)
                     k += 1
                 
@@ -324,7 +498,14 @@ class ResumeParser:
                 while k < len(lines):
                     if self._contains_date_range(lines[k]) or self._looks_like_company_or_role(lines[k]) or self._is_section_header(lines[k]):
                         break
-                    exp['details'].append(lines[k])
+                    detail = self._strip_bullet(lines[k]).strip()
+                    if exp['details'] and self._should_merge_fragment(exp['details'][-1], detail):
+                        exp['details'][-1] = self._merge_fragment(exp['details'][-1], detail)
+                        k += 1
+                        continue
+                    # Skip lines that look like summary text
+                    if detail and not self._looks_like_summary_text(detail):
+                        exp['details'].append(detail)
                     k += 1
                 experiences.append(exp)
                 print(f"    ✓ Parsed experience: {company} - {role} ({duration})")
@@ -393,12 +574,48 @@ class ResumeParser:
         Enhanced to detect High School and similar qualifications and to clean degree text.
         """
         education = []
-        section = self._find_section(['education', 'academic', 'qualification'])
+        section = self._find_section(['education', 'academic', 'qualification', 'academics'])
         if not section:
-            print("  ⚠️  No education section found")
+            print("  ⚠️  No education section found; attempting global scan")
+            # Global scan fallback across entire resume lines
+            education = self._extract_education_global()
+            print(f"  ✅ Global scan produced {len(education)} education entries")
             return education
         
         print(f"  🎓 Found education section with {len(section)} lines")
+        
+        # Filter out lines that clearly look like work experience (have company/role patterns)
+        filtered_section = []
+        for line in section:
+            line_lower = line.lower()
+            
+            # Skip lines that look like job titles or company names with employment indicators
+            if any(word in line_lower for word in ['coordinator', 'manager', 'director', 'assistant', 'specialist', 'analyst']):
+                if not any(edu_word in line_lower for edu_word in ['university', 'college', 'school', 'degree', 'bachelor', 'master']):
+                    print(f"    ⚠️  Skipping potential experience line in education: {line[:60]}")
+                    continue
+            
+            # Skip lines that are clearly experience bullets (start with action verbs typical of work)
+            line_stripped = line.strip().lstrip('•–—-*● ')
+            first_word = line_stripped.split()[0].lower() if line_stripped.split() else ''
+            
+            work_action_verbs = [
+                'managed', 'oversaw', 'coordinated', 'conducted', 'led', 'supervised',
+                'maintained', 'provided', 'facilitated', 'assisted', 'processed',
+                'tracked', 'monitored', 'collaborated', 'acted', 'demonstrated',
+                'proficient', 'applied', 'experienced', 'tested', 'collected'
+            ]
+            
+            # If line starts with work action verb and doesn't contain education keywords, skip it
+            if first_word in work_action_verbs:
+                if not any(edu_word in line_lower for edu_word in ['university', 'college', 'school', 'degree', 'bachelor', 'master', 'graduation', 'gpa', 'graduated']):
+                    print(f"    ⚠️  Skipping work-related bullet in education: {line[:60]}")
+                    continue
+            
+            filtered_section.append(line)
+        
+        section = filtered_section
+        print(f"  🎓 After filtering: {len(section)} lines")
 
         lines = [self._normalize_text(l) for l in section if l and l.strip()]
         i = 0
@@ -439,7 +656,7 @@ class ResumeParser:
                             year = self._clean_years(next_line)
                         i += 1  # Skip the institution line
                 
-                # Collect details (but skip lines that look like other education entries)
+                # Collect details (but skip lines that look like other education entries or work experience)
                 details = []
                 j = i + 1
                 while j < len(lines) and j < i + 4:
@@ -449,14 +666,27 @@ class ResumeParser:
                         break
                     if self._is_section_header(detail_line):
                         break
+                    
+                    # Skip lines that start with work action verbs (these are work experience, not education)
+                    detail_stripped = detail_line.strip().lstrip('•–—-*● ')
+                    first_word_detail = detail_stripped.split()[0].lower() if detail_stripped.split() else ''
+                    if first_word_detail in ['managed', 'oversaw', 'coordinated', 'conducted', 'maintained', 'provided', 'facilitated']:
+                        print(f"      ⚠️  Skipping work bullet in education details: {detail_line[:50]}")
+                        j += 1
+                        continue
+                    
                     # Add as detail if substantial and not an institution-only line
                     is_institution_only = any(k in detail_line.lower() for k in ['university', 'college', 'school']) and len(detail_line.split()) < 6
                     if len(detail_line) > 15 and not is_institution_only:
                         details.append(detail_line)
                     j += 1
                 
-                # Only add if we have at least a degree or institution
-                if degree or institution:
+                # Only add if we have at least a degree or institution AND they look like education content
+                # Skip if degree/institution contain work-related terms
+                degree_looks_valid = degree and not any(word in degree.lower() for word in ['coordinator', 'managed', 'oversaw', 'conducted', 'maintained'])
+                institution_looks_valid = institution or degree_looks_valid  # Institution can be empty if degree is valid
+                
+                if (degree or institution) and (degree_looks_valid or institution):
                     edu = {
                         'degree': degree.strip(),
                         'institution': institution.strip(),
@@ -465,6 +695,8 @@ class ResumeParser:
                     }
                     education.append(edu)
                     print(f"    ✓ Parsed edu: {degree or '(no degree)'} - {institution or '(no inst)'} ({year})")
+                else:
+                    print(f"    ⚠️  Skipped invalid education entry: degree='{degree[:40] if degree else ''}'")
                 
                 i = j
                 continue
@@ -473,6 +705,55 @@ class ResumeParser:
         
         print(f"  ✅ Total education entries extracted: {len(education)}")
         return education
+
+    def _extract_education_global(self):
+        """Fallback: scan all lines for education-like entries even if no explicit section header exists."""
+        results = []
+        seen = set()
+        degree_keywords = [
+            'bachelor', 'master', 'phd', 'mba', 'bsc', 'msc', 'b.sc', 'm.sc', 'degree', 'diploma',
+            'high school', 'secondary school', 'higher secondary', 'matriculation', 'ssc', 'hsc', 'ged'
+        ]
+        institution_keywords = ['university', 'college', 'school', 'institute', 'academy']
+        work_terms = ['coordinator', 'manager', 'director', 'assistant', 'specialist', 'analyst']
+
+        for idx, raw in enumerate(self.lines):
+            line = self._normalize_text(raw)
+            if not line or len(line) < 5 or self._is_section_header(line):
+                continue
+            low = line.lower()
+            # Skip obvious work lines
+            if any(w in low for w in work_terms) and not any(k in low for k in institution_keywords + degree_keywords):
+                continue
+            if any(k in low for k in degree_keywords + institution_keywords):
+                degree, institution = self._parse_degree_institution_line(line)
+                year = self._clean_years(line)
+                degree = re.sub(r'\b(?:19|20)\d{2}\b', '', degree or '').strip(' ,.;:-')
+                if not (degree or institution):
+                    continue
+                key = (degree.lower(), institution.lower(), year)
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({'degree': degree, 'institution': institution, 'year': year, 'details': []})
+
+                # Also peek at the next line if it likely contains the institution/year
+                if not institution and idx + 1 < len(self.lines):
+                    nxt = self._normalize_text(self.lines[idx + 1])
+                    if any(k in nxt.lower() for k in institution_keywords):
+                        inst2 = self._strip_location(nxt)
+                        results[-1]['institution'] = inst2
+                        if not results[-1]['year']:
+                            results[-1]['year'] = self._clean_years(nxt)
+
+        # Prefer most recent entries: sort by year descending when available
+        def year_key(e):
+            y = e.get('year') or ''
+            m = re.search(r'((?:19|20)\d{2})$', y)
+            return int(m.group(1)) if m else -1
+        results.sort(key=year_key, reverse=True)
+        # Limit to 5
+        return results[:5]
 
     # ---------------------- Helpers ----------------------
     def _normalize_text(self, s):
@@ -607,18 +888,50 @@ class ResumeParser:
         return t
     
     def _extract_skills(self):
-        """Extract skills"""
+        """Extract skills - preserve all content from SKILLS section as-is.
+        Each bullet/line is treated as one skill entry. We avoid splitting on '•' or commas
+        to prevent breaking phrases like "Microsoft Office Suite (Excel, Word, Access)".
+        Also stitch short continuation lines to the previous bullet when needed.
+        """
         skills = []
         skills_section = self._find_section(['skills', 'technical skills', 'competencies', 'expertise'])
         
         if skills_section:
-            for line in skills_section:
-                # Split by common delimiters
-                if ',' in line or '|' in line or '•' in line:
-                    parts = re.split(r'[,|•]', line)
-                    skills.extend([p.strip() for p in parts if p.strip()])
-                elif line and not self._is_section_header(line):
-                    skills.append(line)
+            buf = ''
+            for raw in skills_section:
+                t = self._strip_bullet(self._normalize_text(raw))
+                if not t or self._is_section_header(t):
+                    continue
+                
+                # ONLY filter: lines with full date ranges (definitely experience entries)
+                if self._contains_date_range(t):
+                    print(f"    ⏭️  Skipping dated line in skills: {t[:60]}")
+                    continue
+                
+                # ONLY filter: extremely long paragraphs (>300 chars - clearly not a skill line)
+                if len(t) > 300:
+                    print(f"    ⏭️  Skipping paragraph in skills: {t[:60]}...")
+                    continue
+                
+                # Continuation line heuristic: very short fragment, likely part of previous line
+                if buf and self._should_merge_fragment(buf, t):
+                    buf = self._merge_fragment(buf, t)
+                    continue
+                # Flush previous buffer
+                if buf:
+                    skills.append(buf)
+                    buf = ''
+                buf = t
+            if buf:
+                skills.append(buf)
+        
+        # Debug output: show extracted skills
+        if skills:
+            print(f"  🛠️  Extracted {len(skills)} skills:")
+            for idx, skill in enumerate(skills[:10]):
+                print(f"     {idx+1}. {skill[:80]}")
+            if len(skills) > 10:
+                print(f"     ... and {len(skills) - 10} more")
         
         return skills
     
@@ -692,19 +1005,31 @@ class ResumeParser:
         return dict(sections)
     
     def _find_section(self, keywords):
-        """Find section by keywords"""
+        """Find section by keywords - with improved boundary detection"""
         section_lines = []
         in_section = False
+        section_start_idx = -1
         
-        for line in self.lines:
+        # First pass: find the section start
+        for idx, line in enumerate(self.lines):
             if any(keyword in line.lower() for keyword in keywords):
                 in_section = True
-                continue
+                section_start_idx = idx
+                break
+        
+        if not in_section:
+            return section_lines
+        
+        # Second pass: collect lines until next section header
+        for idx in range(section_start_idx + 1, len(self.lines)):
+            line = self.lines[idx]
             
-            if in_section:
-                if self._is_section_header(line):
-                    break
-                section_lines.append(line)
+            # Stop at next section header
+            if self._is_section_header(line):
+                print(f"    🛑 Stopped at next section: '{line[:40]}'")
+                break
+            
+            section_lines.append(line)
         
         return section_lines
     
@@ -716,11 +1041,53 @@ class ResumeParser:
         section_keywords = [
             'experience', 'education', 'skills', 'summary', 'objective',
             'projects', 'certifications', 'awards', 'languages', 'profile',
-            'work history', 'employment', 'qualifications', 'achievements'
+            'work history', 'employment', 'qualifications', 'achievements',
+            'work experience', 'professional experience', 'career history'
         ]
         
         line_lower = line.lower().strip()
         return any(keyword == line_lower or line_lower.startswith(keyword) for keyword in section_keywords)
+    
+    def _looks_like_summary_text(self, text):
+        """Check if text looks like summary/objective content rather than experience details"""
+        if not text:
+            return False
+        
+        # Summary text characteristics:
+        # - Often starts with personal pronouns or adjectives
+        # - Contains general career statements
+        # - No action verbs typical of bullet points
+        
+        text_lower = text.lower().strip()
+        
+        # Skip if starts with typical summary phrases
+        summary_starters = [
+            'detail-oriented', 'results-oriented', 'highly motivated',
+            'experienced professional', 'proven track record', 'dedicated',
+            'proficient in', 'recognized for', 'skilled in',
+            'strong background', 'extensive experience', 'adept at'
+        ]
+        
+        # Check if line starts with these phrases (more likely to be summary)
+        for starter in summary_starters:
+            if text_lower.startswith(starter):
+                return True
+        
+        # If the line is very long (>150 chars) and doesn't start with action verb, might be summary
+        if len(text) > 150:
+            action_verbs = ['managed', 'developed', 'created', 'led', 'coordinated', 
+                          'implemented', 'executed', 'analyzed', 'designed', 'built',
+                          'oversaw', 'directed', 'supervised', 'maintained', 'conducted',
+                          'established', 'improved', 'increased', 'reduced', 'achieved',
+                          'tracked', 'monitored', 'facilitated', 'collaborated', 'assisted',
+                          'provided', 'processed', 'scheduled', 'organized']
+            
+            # Check if starts with action verb
+            first_word = text_lower.split()[0] if text_lower.split() else ''
+            if first_word not in action_verbs:
+                return True
+        
+        return False
     
     def _has_contact_info(self, text):
         """Check if text contains contact information"""
@@ -731,6 +1098,39 @@ class ResumeParser:
         # Usually title case, not too long, no bullets
         return (line.istitle() or line.isupper()) and len(line) < 100 and not line.startswith('•')
     
+    def _looks_like_detail_bullet(self, text):
+        """Check if text looks like a detail bullet (starts with action verb or is descriptive)"""
+        if not text:
+            return False
+        
+        text_lower = text.lower().strip()
+        
+        # Common action verbs used in resume bullets
+        action_verbs = [
+            'managed', 'developed', 'created', 'led', 'coordinated', 
+            'implemented', 'executed', 'analyzed', 'designed', 'built',
+            'oversaw', 'directed', 'supervised', 'maintained', 'conducted',
+            'established', 'improved', 'increased', 'reduced', 'achieved',
+            'tracked', 'monitored', 'facilitated', 'collaborated', 'assisted',
+            'provided', 'processed', 'scheduled', 'organized', 'acted',
+            'demonstrated', 'tested', 'collected', 'ensured', 'handled',
+            'performed', 'supported', 'delivered', 'prepared', 'reviewed',
+            'updated', 'resolved', 'trained', 'documented', 'communicated',
+            'participated', 'contributed', 'streamlined', 'optimized'
+        ]
+        
+        # Check if starts with action verb
+        first_word = text_lower.split()[0] if text_lower.split() else ''
+        if first_word in action_verbs:
+            return True
+        
+        # Check if line is long and descriptive (likely a detail)
+        # Detail bullets are usually longer than company/role names
+        if len(text) > 60 and not (text.istitle() or text.isupper()):
+            return True
+        
+        return False
+    
     def _contains_date_range(self, line):
         """Check if line contains date range"""
         date_patterns = [
@@ -739,6 +1139,38 @@ class ResumeParser:
             r'\d{1,2}/\d{4}',  # 01/2020
         ]
         return any(re.search(pattern, line, re.IGNORECASE) for pattern in date_patterns)
+
+    def _should_merge_fragment(self, prev, curr):
+        """Heuristic to decide if 'curr' is a continuation of 'prev' (fragment stitching).
+        Merges tiny lines like 'Word', 'Access) and other', 'reporting', 'and documentation.' into the previous bullet.
+        """
+        if not curr:
+            return False
+        # Do not merge if curr looks like a section header or explicit new sentence with leading verb
+        if self._is_section_header(curr) or self._looks_like_detail_bullet(curr):
+            return False
+        # Merge if curr is a very short fragment (<= 25 chars or <= 5 words)
+        words = curr.split()
+        if len(curr) <= 25 or len(words) <= 5:
+            return True
+        # Merge if previous line has open parenthesis not yet closed
+        if prev and prev.count('(') > prev.count(')'):
+            return True
+        return False
+
+    def _merge_fragment(self, prev, curr):
+        """Join fragment 'curr' to 'prev' with an appropriate delimiter."""
+        if not prev:
+            return curr
+        # If prev has an open parenthesis, separate with comma unless prev already ends with a space or comma
+        if prev.count('(') > prev.count(')'):
+            sep = ', ' if not prev.endswith((' ', ',')) else ''
+            return (prev + sep + curr).strip()
+        # If prev ends without terminal punctuation, add space
+        if not prev.endswith(('.', '!', '?', ')', ']')):
+            return (prev + ' ' + curr).strip()
+        # Default: space join
+        return (prev + ' ' + curr).strip()
     
     def _print_parsing_summary(self, data):
         """Print parsing summary"""

@@ -62,6 +62,12 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
     files.forEach(file => {
       formData.append('resume_files', file);
     });
+    
+    // Send CAI contact data if provided
+    if (caiContact.name || caiContact.phone || caiContact.email) {
+      formData.append('cai_contact', JSON.stringify(caiContact));
+      formData.append('edit_cai_contact', 'true');
+    }
 
     try {
       const response = await fetch('http://localhost:5000/api/format', {
