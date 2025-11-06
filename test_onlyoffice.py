@@ -68,11 +68,18 @@ def test_onlyoffice_status():
             try:
                 response = requests.get(f'http://localhost:5000/api/onlyoffice/config/{test_file}', timeout=2)
                 if response.status_code == 200:
-                    config = response.json()
+                    data = response.json()
                     print(f"   ✅ Config endpoint working!")
-                    print(f"   📄 Document: {config['document']['title']}")
-                    print(f"   🔑 Key: {config['document']['key']}")
-                    print(f"   📥 URL: {config['document']['url']}")
+                    
+                    # Check if response has the expected structure
+                    if 'config' in data and 'document' in data['config']:
+                        document = data['config']['document']
+                        print(f"   📄 Document: {document['title']}")
+                        print(f"   🔑 Key: {document['key']}")
+                        print(f"   📥 URL: {document['url']}")
+                        print(f"   ✅ OnlyOffice config structure is correct!")
+                    else:
+                        print(f"   ⚠️  Unexpected response structure: {list(data.keys())}")
                 else:
                     print(f"   ⚠️  Config endpoint returned {response.status_code}")
             except Exception as e:

@@ -1,0 +1,16 @@
+[config]
+# ============================================================================
+# AZURE DEPLOYMENT CONFIGURATION
+# ============================================================================
+# This file tells Azure how to deploy your Python application
+# ============================================================================
+
+# Build the application during deployment
+# This installs all packages from requirements.txt
+SCM_DO_BUILD_DURING_DEPLOYMENT=true
+
+# Use Python for the build
+PROJECT=.
+
+# Enable detailed build logs
+SCM_TRACE_LEVEL=4

@@ -33,15 +33,23 @@ class ResumeParser:
         self.raw_text = ""
         self.lines = []
         
-        # Initialize intelligent parser if available
+        # Initialize intelligent parser if available and enabled
         self.intelligent_parser = None
-        if INTELLIGENT_PARSER_AVAILABLE:
+        try:
+            from config import Config
+            use_ml = Config.USE_ML_PARSER
+        except:
+            use_ml = False
+        
+        if use_ml and INTELLIGENT_PARSER_AVAILABLE:
             try:
                 self.intelligent_parser = get_intelligent_parser()
-                print("✅ Using intelligent section mapper")
+                print("✅ Using intelligent section mapper (ML enabled)")
             except Exception as e:
                 print(f"⚠️  Failed to load intelligent parser: {e}")
                 self.intelligent_parser = None
+        else:
+            print("⚡ Using fast parser (ML disabled for speed)")
         
     def parse(self):
         """Main parsing method"""
@@ -335,7 +343,9 @@ class ResumeParser:
         print(f"  🔍 Searching for implicit summary between lines {contact_end} and {first_section}")
         
         # Look for substantial paragraphs in header area
-        for i in range(contact_end, min(first_section, 15)):
+        for i in range(contact_end, min(first_section, 15, len(self.lines))):
+            if i >= len(self.lines):
+                break
             line = self.lines[i].strip()
             
             # Skip section headers and short lines
@@ -361,7 +371,9 @@ class ResumeParser:
                 
                 # Collect continuation lines
                 j = i + 1
-                while j < min(i + 5, first_section):
+                while j < min(i + 5, first_section, len(self.lines)):
+                    if j >= len(self.lines):
+                        break
                     next_line = self.lines[j].strip()
                     
                     # Stop at section header
@@ -1002,7 +1014,9 @@ class ResumeParser:
         
         if ',' in s:
             parts = s.split(',', maxsplit=1)
-            return parts[0].strip(), parts[1].strip()
+            if len(parts) >= 2:
+                return parts[0].strip(), parts[1].strip()
+            return parts[0].strip() if parts else '', ''
         
         elif ' - ' in s or ' – ' in s:
             parts = re.split(r'\s+[-–]\s+', s, maxsplit=1)

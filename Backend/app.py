@@ -11,8 +11,9 @@ from models.database import TemplateDB
 from utils.advanced_template_analyzer import analyze_template
 from utils.advanced_resume_parser import parse_resume
 
-# Import OnlyOffice routes
+# Import routes
 from routes.onlyoffice_routes import onlyoffice_bp
+from routes.cai_contact_routes import cai_contact_bp
 
 # Try to import enhanced formatter, fallback to standard if not available
 try:
@@ -62,8 +63,9 @@ CORS(
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 )
 
-# Register OnlyOffice blueprint
+# Register blueprints
 app.register_blueprint(onlyoffice_bp)
+app.register_blueprint(cai_contact_bp)
 
 db = TemplateDB()
 
@@ -204,7 +206,31 @@ def format_resumes():
         
         start_time = time.time()
         
-        def process_single_resume(file, idx, total):
+        # Extract CAI contact data BEFORE threading (request context not available in threads)
+        cai_contact_data = None
+        cai_contacts_data = None
+        edit_cai_contact = False
+        
+        # Check for multiple contacts first (new format)
+        if 'cai_contacts' in request.form:
+            try:
+                import json
+                cai_contacts_data = json.loads(request.form['cai_contacts'])
+                edit_cai_contact = request.form.get('edit_cai_contact') == 'true'
+                print(f"  ✏️  CAI Contacts (multiple) edit enabled: {len(cai_contacts_data)} contact(s)")
+            except Exception as e:
+                print(f"  ⚠️  Error parsing CAI contacts data: {e}")
+        # Backward compatibility: single contact
+        elif 'cai_contact' in request.form:
+            try:
+                import json
+                cai_contact_data = json.loads(request.form['cai_contact'])
+                edit_cai_contact = request.form.get('edit_cai_contact') == 'true'
+                print(f"  ✏️  CAI Contact (single) edit enabled: {cai_contact_data}")
+            except Exception as e:
+                print(f"  ⚠️  Error parsing CAI contact data: {e}")
+        
+        def process_single_resume(file, idx, total, cai_data, cai_contacts, edit_cai):
             """Process a single resume file"""
             if file.filename == '' or not allowed_file(file.filename):
                 return None
@@ -227,16 +253,13 @@ def format_resumes():
             parse_time = time.time() - parse_start
             print(f"  ⏱️  Parsing took: {parse_time:.2f}s")
             
-            # Add CAI contact data from request if provided
-            if 'cai_contact' in request.form:
-                try:
-                    import json
-                    cai_data = json.loads(request.form['cai_contact'])
-                    resume_data['cai_contact'] = cai_data
-                    resume_data['edit_cai_contact'] = request.form.get('edit_cai_contact') == 'true'
-                    print(f"  ✏️  CAI Contact edit enabled: {cai_data}")
-                except Exception as e:
-                    print(f"  ⚠️  Error parsing CAI contact data: {e}")
+            # Add CAI contact data if provided (multiple contacts preferred)
+            if cai_contacts:
+                resume_data['cai_contacts'] = cai_contacts
+                resume_data['edit_cai_contact'] = edit_cai
+            elif cai_data:
+                resume_data['cai_contact'] = cai_data
+                resume_data['edit_cai_contact'] = edit_cai
             
             if resume_data:
                 # Format resume with intelligent formatter
@@ -254,7 +277,8 @@ def format_resumes():
                         result = {
                             'filename': docx_filename,
                             'original': filename,
-                            'name': resume_data['name']
+                            'name': resume_data['name'],
+                            'template_name': template.get('name', 'resume')
                         }
                         print(f"✅ Successfully formatted: {filename} → {docx_filename}\n")
                         
@@ -284,9 +308,9 @@ def format_resumes():
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
         with ThreadPoolExecutor(max_workers=min(4, len(files))) as executor:
-            # Submit all tasks
+            # Submit all tasks with CAI contact data (single or multiple)
             future_to_file = {
-                executor.submit(process_single_resume, file, idx, len(files)): file 
+                executor.submit(process_single_resume, file, idx, len(files), cai_contact_data, cai_contacts_data, edit_cai_contact): file 
                 for idx, file in enumerate(files, 1)
             }
             
@@ -314,8 +338,33 @@ def format_resumes():
 
 @app.route('/api/download/<filename>')
 def download_file(filename):
-    """Download formatted resume"""
-    return send_from_directory(Config.OUTPUT_FOLDER, filename, as_attachment=True)
+    """Download formatted resume with proper filename"""
+    file_path = os.path.join(Config.OUTPUT_FOLDER, filename)
+    
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'File not found'}), 404
+    
+    # Try to get a better filename from request args
+    candidate_name = request.args.get('name', '')
+    template_name = request.args.get('template', 'resume')
+    
+    # Clean names for filename
+    if candidate_name:
+        # Remove special characters and spaces
+        clean_name = ''.join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in candidate_name)
+        clean_name = clean_name.replace(' ', '_')
+        clean_template = ''.join(c if c.isalnum() or c in (' ', '-', '_') else '' for c in template_name)
+        clean_template = clean_template.replace(' ', '_')
+        download_name = f"{clean_name}_{clean_template}.docx"
+    else:
+        download_name = filename
+    
+    return send_from_directory(
+        Config.OUTPUT_FOLDER, 
+        filename, 
+        as_attachment=True,
+        download_name=download_name
+    )
 
 @app.route('/api/preview/<filename>')
 def preview_file(filename):
@@ -526,6 +575,14 @@ def onlyoffice_status():
         })
 
 if __name__ == '__main__':
+    # PRE-WARM ML MODELS FOR INSTANT FIRST REQUEST 
+    try:
+        from utils.model_cache import prewarm_models
+        prewarm_models()
+    except Exception as e:
+        print(f"  Model pre-warming failed: {e}")
+        print("   Models will load on first request instead")
+    
     import socket
     
     # Get local IP for display

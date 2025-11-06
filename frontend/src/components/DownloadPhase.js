@@ -12,26 +12,59 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
   const previewContainerRef = useRef(null);
   const editorInstanceRef = useRef(null);
   
-  const handleDownload = async (filename) => {
-    // Force save before download if editor is open
-    if (editorInstanceRef.current && selectedPreview?.filename === filename) {
-      try {
-        setDownloadingFile(filename);
-        console.log('⏳ Saving changes before download...');
-        
-        // Wait longer for OnlyOffice to save (5 seconds to be safe)
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        console.log('✅ Changes saved, downloading...');
-        setDownloadingFile(null);
-      } catch (error) {
-        console.error('Error saving before download:', error);
-        setDownloadingFile(null);
-      }
-    }
+  const handleSaveAndDownload = async (result) => {
+    const filename = result.filename;
+    const candidateName = result.name || 'Resume';
+    const templateName = result.template_name || 'Template';
     
-    // Download the file
-    window.open(`http://localhost:5000/api/download/${filename}`, '_blank');
+    setDownloadingFile(filename);
+    
+    try {
+      console.log('💾 Saving changes...');
+      
+      // Wait 3 seconds for OnlyOffice to auto-save
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      console.log('📥 Downloading saved file...');
+      
+      // Build download URL with proper filename
+      const downloadUrl = `http://localhost:5000/api/download/${filename}?name=${encodeURIComponent(candidateName)}&template=${encodeURIComponent(templateName)}`;
+      
+      // Fetch the file
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+      }
+      
+      // Get the blob
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${candidateName}_${templateName}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Cleanup
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      console.log('✅ Save & Download completed');
+    } catch (error) {
+      console.error('❌ Save & Download error:', error);
+      alert('Save & Download failed. Please try again.');
+    } finally {
+      // Clear downloading state
+      setTimeout(() => setDownloadingFile(null), 1000);
+    }
+  };
+  
+  const handleDownload = async (result) => {
+    // Just call save and download
+    await handleSaveAndDownload(result);
   };
   
   const handlePreviewClick = async (result) => {
@@ -209,7 +242,7 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
   const handleDownloadAll = () => {
     results.forEach((result, index) => {
       setTimeout(() => {
-        handleDownload(result.filename);
+        handleDownload(result);
       }, index * 500); // Stagger downloads by 500ms
     });
   };
@@ -248,21 +281,18 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
             <span className="btn-icon">{darkMode ? '☀️' : '🌙'}</span>
             <span className="btn-label">{darkMode ? 'Light' : 'Dark'}</span>
           </button>
-          <button className="status-btn secondary" onClick={onStartOver} title="Format More">
-            <span className="btn-icon">🔄</span>
-            <span className="btn-label">New</span>
-          </button>
         </div>
       </div>
 
-      {/* Horizontal Tab Bar for File Selection */}
+      {/* Horizontal Tab Bar for File Selection with Format More Button */}
       <div className={`file-tabs-bar ${!headerVisible ? 'hidden' : ''}`}>
         <div className="tabs-hint-banner">
           <span className="hint-icon">👇</span>
           <span className="hint-text">Click any resume below to preview and edit</span>
         </div>
-        <div className="tabs-container">
-          {results.map((result, index) => (
+        <div className="tabs-row-wrapper">
+          <div className="tabs-container">
+            {results.map((result, index) => (
             <div
               key={index}
               className={`file-tab ${selectedPreview?.filename === result.filename ? 'active' : ''} ${!selectedPreview ? 'pulse-animation' : ''}`}
@@ -285,7 +315,7 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
                   className="tab-download"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleDownload(result.filename);
+                    handleDownload(result);
                   }}
                   title="Download"
                 >
@@ -294,6 +324,13 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
               </div>
             </div>
           ))}
+          </div>
+          
+          {/* Format More Button - Fixed on Right */}
+          <button className="format-more-btn-compact" onClick={onStartOver} title="Format More Resumes">
+            <span className="format-more-icon-compact">📝</span>
+            <span className="format-more-text-compact">Format More</span>
+          </button>
         </div>
       </div>
 
@@ -352,18 +389,12 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
                   </div>
                   <div className="popup-actions">
                     <button 
-                      className="popup-download-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownload(selectedPreview.filename);
-                      }}
+                      className="popup-save-btn"
+                      onClick={() => handleSaveAndDownload(selectedPreview)}
                       disabled={downloadingFile === selectedPreview.filename}
+                      title="Save changes and download"
                     >
-                      {downloadingFile === selectedPreview.filename ? (
-                        <>⏳ Saving...</>
-                      ) : (
-                        <>⬇️ Download</>
-                      )}
+                      {downloadingFile === selectedPreview.filename ? '⏳ Saving...' : '💾 Save & Download'}
                     </button>
                     <button 
                       className="popup-close-btn"

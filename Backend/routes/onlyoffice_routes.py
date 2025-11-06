@@ -35,11 +35,12 @@ def get_onlyoffice_config(filename):
     file_mtime = os.path.getmtime(file_path)
     doc_key = f"{filename}_{int(file_mtime)}"
     
-    # CRITICAL: Use hardcoded local IP for Docker to reach Flask
-    # This is the most reliable method for OnlyOffice container
-    backend_url = "http://192.168.0.104:5000"
+    # CRITICAL: Use host.docker.internal for Docker to reach Flask
+    # This is the most reliable method for OnlyOffice container on Windows/Mac
+    from config import Config
+    backend_url = Config.BACKEND_URL
     
-    print(f"✅ Using hardcoded local IP: 192.168.0.104")
+    print(f"✅ Using backend URL: {backend_url}")
     print(f"📡 OnlyOffice will use: {backend_url}")
     print(f"📡 Download URL: {backend_url}/api/onlyoffice/download/{filename}")
     print(f"📡 Callback URL: {backend_url}/api/onlyoffice/callback/{filename}")

@@ -16,6 +16,16 @@ import shutil
 import traceback
 import json
 
+# Import style manager and section detector
+try:
+    from utils.style_manager import StyleManager
+    from utils.section_detector import SectionDetector
+    STYLE_PRESERVATION_ENABLED = True
+    print("✅ Style preservation and section detection enabled")
+except ImportError:
+    STYLE_PRESERVATION_ENABLED = False
+    print("⚠️  Style preservation not available")
+
 # Try to import win32com for .doc support
 try:
     import win32com.client
@@ -33,6 +43,14 @@ class WordFormatter:
         self.output_path = output_path
         self.template_path = template_analysis.get('template_path')
         self.template_type = template_analysis.get('template_type')
+        
+        # Initialize style manager and section detector
+        if STYLE_PRESERVATION_ENABLED:
+            self.style_manager = StyleManager()
+            self.section_detector = SectionDetector(use_ml=True)
+        else:
+            self.style_manager = None
+            self.section_detector = None
         
     def format(self):
         """Main formatting method"""
@@ -727,19 +745,22 @@ class WordFormatter:
             for pat in name_patterns:
                 if re.search(pat, paragraph.text, re.IGNORECASE):
                     before = paragraph.text
-                    # Replace with angle-bracketed name format: <CANDIDATE NAME>
-                    self._regex_replace_paragraph(paragraph, pat, bracketed_name)
-                    if paragraph.text != before:
-                        print(f"  ✅ Regex replaced candidate name in paragraph {para_idx} with {bracketed_name}")
+                    # Replace with actual candidate name while preserving formatting
+                    new_text = re.sub(pat, candidate_name, paragraph.text, flags=re.IGNORECASE)
+                    if new_text != before:
+                        self._replace_text_preserve_style(paragraph, new_text)
+                        print(f"  ✅ Replaced name placeholder with '{candidate_name}' (formatting preserved)")
                         replaced_count += 1
 
             # Generic catch-all: any <...> containing both 'candidate' and 'name' (any order)
             generic_name_pat = r"<[^>]*(?:candidate[^>]*name|name[^>]*candidate)[^>]*>"
             if re.search(generic_name_pat, paragraph.text, re.IGNORECASE):
                 before = paragraph.text
-                self._regex_replace_paragraph(paragraph, generic_name_pat, bracketed_name)
-                if paragraph.text != before:
-                    print(f"  ✅ Generic regex replaced candidate name in paragraph {para_idx} with {bracketed_name}")
+                # Replace with actual candidate name while preserving formatting
+                new_text = re.sub(generic_name_pat, candidate_name, paragraph.text, flags=re.IGNORECASE)
+                if new_text != before:
+                    self._replace_text_preserve_style(paragraph, new_text)
+                    print(f"  ✅ Replaced name placeholder with '{candidate_name}' (formatting preserved)")
                     replaced_count += 1
 
             # CRITICAL: Check if this is an EMPLOYMENT HISTORY section heading
@@ -760,12 +781,16 @@ class WordFormatter:
                     if not any(h in original_heading.upper() for h in ['EMPLOYMENT', 'EXPERIENCE', 'WORK']):
                         original_heading = 'Employment History'  # Fallback
                     
-                    # Clear and reset heading with proper formatting (BOLD + UNDERLINE + CAPS)
-                    paragraph.clear()
-                    run = paragraph.add_run(original_heading.upper())
-                    run.bold = True
-                    run.underline = True
-                    run.font.size = Pt(12)
+                    # Replace text while preserving original formatting (alignment, font, color)
+                    self._replace_text_preserve_style(paragraph, original_heading.upper())
+                    
+                    # Apply additional formatting (bold, underline) while keeping original style
+                    if paragraph.runs:
+                        for run in paragraph.runs:
+                            run.bold = True
+                            run.underline = True
+                            if not run.font.size:  # Only set if not already set
+                                run.font.size = Pt(12)
                     paragraph.paragraph_format.space_before = Pt(12)
                     paragraph.paragraph_format.space_after = Pt(6)
                     
@@ -1103,6 +1128,13 @@ class WordFormatter:
                                 txt = (line or '').strip()
                                 if not txt:
                                     continue
+                                
+                                # CRITICAL: Skip section headings (don't add bullets to headings)
+                                txt_upper = txt.upper()
+                                if any(heading in txt_upper for heading in ['PROFESSIONAL SUMMARY', 'SUMMARY', 'PROFILE', 'OBJECTIVE']):
+                                    print(f"      ⏭️  Skipping section heading: '{txt}'")
+                                    continue
+                                
                                 bullet_para = self._insert_paragraph_after(last_para, '')
                                 if bullet_para:
                                     # No left indent for summary bullets
@@ -1530,6 +1562,13 @@ class WordFormatter:
                                 txt = (line or '').strip()
                                 if not txt:
                                     continue
+                                
+                                # CRITICAL: Skip section headings (don't add bullets to headings)
+                                txt_upper = txt.upper()
+                                if any(heading in txt_upper for heading in ['PROFESSIONAL SUMMARY', 'SUMMARY', 'PROFILE', 'OBJECTIVE']):
+                                    print(f"      ⏭️  Skipping section heading: '{txt}'")
+                                    continue
+                                
                                 bullet_para = self._insert_paragraph_after(last_para, '')
                                 if bullet_para:
                                     # No left indent for summary bullets
@@ -2025,84 +2064,218 @@ class WordFormatter:
         return {"name": "", "phone": "", "email": ""}
 
     def _ensure_cai_contact(self, doc):
-        """Ensure the CAI CONTACT section exists and is filled from persistent storage.
-        Will not change stored values unless an explicit edit flag is provided via
-        resume_data['edit_cai_contact'] or template_analysis['edit_cai_contact'].
         """
-        edit_flag = bool(self.resume_data.get('edit_cai_contact') or (self.template_analysis or {}).get('edit_cai_contact'))
-        proposed = self.resume_data.get('cai_contact', {})
-        cai = self._load_cai_contact(proposed=proposed, edit=edit_flag)
+        Ensure the CAI CONTACT section exists and is filled from persistent storage.
+        SMART REPLACEMENT: Preserves template formatting, spacing, and "or" separators
+        Supports multiple contacts
+        """
+        # Get all selected CAI contacts (can be multiple)
+        cai_contacts = self.resume_data.get('cai_contacts', [])
+        
+        # Backward compatibility: check for single contact
+        if not cai_contacts:
+            single_contact = self.resume_data.get('cai_contact', {})
+            if single_contact and single_contact.get('name'):
+                cai_contacts = [single_contact]
+        
+        if not cai_contacts or len(cai_contacts) == 0:
+            print("  ⏭️  No CAI contacts provided; skipping CAI contact insertion")
+            return
 
         # Find existing CAI CONTACT heading
         heading_idx = None
         for idx, p in enumerate(doc.paragraphs):
-            if (p.text or '').strip().upper() == 'CAI CONTACT':
+            if 'CAI CONTACT' in (p.text or '').strip().upper():
                 heading_idx = idx
                 break
 
         if heading_idx is None:
-            # Do NOT create CAI CONTACT unless explicitly requested via edit flag
-            if not edit_flag:
-                print("  ⏭️  No 'CAI CONTACT' heading in template; skipping CAI contact insertion")
-                return
-            # Explicitly requested: create near the top
-            anchor = doc.paragraphs[0] if doc.paragraphs else doc.add_paragraph("")
-            heading = self._insert_paragraph_after(anchor, 'CAI CONTACT')
-            if heading is None:
-                heading = doc.add_paragraph('CAI CONTACT')
-            for r in heading.runs:
-                r.bold = True
-                r.font.size = Pt(11)
-            # Write lines under heading
-            self._write_cai_contact_block(heading, cai)
-        else:
-            # CAI CONTACT heading exists in template
-            heading = doc.paragraphs[heading_idx]
-            
-            if not edit_flag:
-                # No edit requested - leave template CAI CONTACT section completely unchanged
-                print("  ⏭️  CAI CONTACT exists in template but edit_flag not set; leaving unchanged")
-                return
-            
-            # Edit flag is set - ADD new contact info BELOW existing template content
-            print("  ✏️  Edit CAI Contact enabled - adding new contact info below template defaults")
-            
-            # Find the last paragraph of the CAI CONTACT section
-            # Scan only within CAI CONTACT - stop at empty line or candidate name placeholder
-            last_cai_para = heading
-            for j in range(1, 15):  # Scan up to 15 paragraphs after heading
-                k = heading_idx + j
-                if k >= len(doc.paragraphs):
-                    break
-                txt = (doc.paragraphs[k].text or '').strip()
-                upper = txt.upper()
-                
-                # Stop at candidate name placeholder (indicates start of main content)
-                if '<' in txt and '>' in txt and any(word in upper for word in ['NAME', 'CANDIDATE', 'PAULA', 'LAWSON']):
-                    print(f"  🛑 Stopped at candidate name placeholder at para {k}")
-                    break
-                
-                # Stop at next major section headings
-                if any(kw in upper for kw in ['EMPLOYMENT HISTORY', 'WORK EXPERIENCE', 'EDUCATION', 'SUMMARY', 'SKILLS']) and len(txt) < 50:
-                    print(f"  🛑 Stopped at section heading '{txt}' at para {k}")
-                    break
-                
-                # Stop at multiple consecutive empty lines (indicates section break)
-                if not txt:
-                    # Check if next line is also empty or a major section
-                    if k + 1 < len(doc.paragraphs):
-                        next_txt = (doc.paragraphs[k + 1].text or '').strip()
-                        if not next_txt or any(kw in next_txt.upper() for kw in ['EMPLOYMENT', 'SUMMARY', 'EDUCATION']):
-                            print(f"  🛑 Stopped at empty line break at para {k}")
-                            break
-                
-                # This is still part of CAI CONTACT section
-                last_cai_para = doc.paragraphs[k]
-            
-            # Insert new contact block after the last CAI CONTACT paragraph
-            print(f"  📍 Inserting edited CAI contact after paragraph {heading_idx + (doc.paragraphs.index(last_cai_para) - heading_idx if last_cai_para in doc.paragraphs else 0)}")
-            self._write_cai_contact_block(last_cai_para, cai)
+            print("  ⏭️  No 'CAI CONTACT' heading in template; skipping CAI contact insertion")
+            return
+        
+        # CAI CONTACT heading exists - analyze template structure
+        heading = doc.paragraphs[heading_idx]
+        print(f"  📋 Found CAI CONTACT at paragraph {heading_idx}")
+        
+        # Analyze template structure
+        template_structure = self._analyze_cai_template_structure(doc, heading_idx)
+        
+        # Replace contact info while preserving template formatting
+        # Pass all contacts (list)
+        self._replace_cai_contact_smart(doc, heading_idx, cai_contacts, template_structure)
 
+    def _analyze_cai_template_structure(self, doc, heading_idx):
+        """
+        Analyze CAI CONTACT template structure
+        Returns dict with: has_or_separator, num_contacts, paragraph_indices
+        """
+        structure = {
+            'has_or_separator': False,
+            'num_template_contacts': 0,
+            'paragraph_indices': [],
+            'or_indices': []
+        }
+        
+        # Scan paragraphs after CAI CONTACT heading
+        for j in range(1, 20):
+            k = heading_idx + j
+            if k >= len(doc.paragraphs):
+                break
+            
+            para = doc.paragraphs[k]
+            txt = (para.text or '').strip()
+            txt_upper = txt.upper()
+            
+            # Stop at candidate name placeholder
+            if '<' in txt and '>' in txt and any(word in txt_upper for word in ['NAME', 'CANDIDATE']):
+                break
+            
+            # Stop at next section
+            if any(kw in txt_upper for kw in ['EMPLOYMENT', 'EDUCATION', 'SUMMARY', 'SKILLS']) and len(txt) < 50:
+                break
+            
+            # Check for "or" separator
+            if txt.lower().strip() == 'or':
+                structure['has_or_separator'] = True
+                structure['or_indices'].append(k)
+                print(f"    ✓ Found 'or' separator at paragraph {k}")
+            
+            # Track all CAI CONTACT paragraphs
+            if txt:  # Non-empty paragraph
+                structure['paragraph_indices'].append(k)
+        
+        # Estimate number of contacts in template
+        if structure['has_or_separator']:
+            structure['num_template_contacts'] = len(structure['or_indices']) + 1
+        else:
+            # Heuristic: count name-like paragraphs (bold, short, no colons)
+            name_count = 0
+            for idx in structure['paragraph_indices']:
+                para = doc.paragraphs[idx]
+                txt = para.text.strip()
+                # Name is usually bold, short, and doesn't have "Phone:" or "Email:"
+                if txt and len(txt) < 50 and ':' not in txt:
+                    if para.runs and any(r.bold for r in para.runs):
+                        name_count += 1
+            structure['num_template_contacts'] = max(1, name_count)
+        
+        print(f"    📊 Template structure: {structure['num_template_contacts']} contact(s), 'or' separator: {structure['has_or_separator']}")
+        return structure
+    
+    def _replace_cai_contact_smart(self, doc, heading_idx, cai_contacts, structure):
+        """
+        Smart replacement of CAI CONTACT preserving template formatting
+        Supports multiple contacts with "or" separator
+        """
+        # cai_contacts can be a single dict or a list of dicts
+        if isinstance(cai_contacts, dict):
+            cai_contacts = [cai_contacts]
+        
+        if not cai_contacts or len(cai_contacts) == 0:
+            print("    ⚠️  No CAI contacts provided, skipping replacement")
+            return
+        
+        print(f"    📝 Replacing with {len(cai_contacts)} CAI contact(s)")
+        
+        # First, identify and DELETE all existing content after CAI CONTACT heading
+        paragraphs_to_delete = []
+        for j in range(1, 30):
+            k = heading_idx + j
+            if k >= len(doc.paragraphs):
+                break
+            
+            para = doc.paragraphs[k]
+            txt = (para.text or '').strip()
+            txt_upper = txt.upper()
+            
+            # Stop at candidate name placeholder
+            if '<' in txt and '>' in txt and any(word in txt_upper for word in ['NAME', 'CANDIDATE']):
+                break
+            
+            # Stop at next section
+            if any(kw in txt_upper for kw in ['EMPLOYMENT', 'EDUCATION', 'SUMMARY', 'SKILLS', 'EXPERIENCE']) and len(txt) < 50:
+                break
+            
+            # Mark for deletion
+            paragraphs_to_delete.append(para)
+        
+        # DELETE template content (not just clear)
+        for para in paragraphs_to_delete:
+            try:
+                # Get the paragraph's parent element and remove it
+                p_element = para._element
+                p_element.getparent().remove(p_element)
+            except Exception as e:
+                print(f"      ⚠️  Could not delete paragraph: {e}")
+        
+        print(f"      🗑️  Deleted {len(paragraphs_to_delete)} template paragraphs")
+        
+        # Now insert all selected CAI contacts
+        last_para = doc.paragraphs[heading_idx]
+        
+        for contact_idx, contact in enumerate(cai_contacts):
+            name = (contact.get('name') or '').strip()
+            phone = (contact.get('phone') or '').strip()
+            email = (contact.get('email') or '').strip()
+            
+            if not name:
+                continue
+            
+            print(f"      📝 Adding contact {contact_idx + 1}: {name}")
+            
+            # Add name (bold)
+            name_para = self._insert_paragraph_after(last_para, name)
+            if name_para:
+                for run in name_para.runs:
+                    run.bold = True
+                    run.font.size = Pt(10)
+                last_para = name_para
+            
+            # Add phone
+            if phone:
+                phone_para = self._insert_paragraph_after(last_para, f"Phone: {phone}")
+                if phone_para:
+                    for run in phone_para.runs:
+                        run.font.size = Pt(10)
+                    # Add indentation
+                    phone_para.paragraph_format.left_indent = Pt(18)
+                    last_para = phone_para
+            
+            # Add email
+            if email:
+                email_para = self._insert_paragraph_after(last_para, f"Email: {email}")
+                if email_para:
+                    for run in email_para.runs:
+                        run.font.size = Pt(10)
+                    # Add indentation
+                    email_para.paragraph_format.left_indent = Pt(18)
+                    last_para = email_para
+            
+            # Add "or" separator if not last contact (match template format)
+            if contact_idx < len(cai_contacts) - 1:
+                # Blank line before "or"
+                blank1 = self._insert_paragraph_after(last_para, '')
+                if blank1:
+                    last_para = blank1
+                
+                # "or" line (no indentation, normal text)
+                or_para = self._insert_paragraph_after(last_para, 'or')
+                if or_para:
+                    for run in or_para.runs:
+                        run.font.size = Pt(10)
+                    # Remove any indentation
+                    or_para.paragraph_format.left_indent = Pt(0)
+                    last_para = or_para
+                
+                # Blank line after "or"
+                blank2 = self._insert_paragraph_after(last_para, '')
+                if blank2:
+                    last_para = blank2
+                
+                print(f"        ✓ Added 'or' separator with proper spacing")
+        
+        print(f"    ✅ Replaced CAI CONTACT section with {len(cai_contacts)} contact(s)")
+    
     def _write_cai_contact_block(self, heading_para, cai):
         """Write CAI contact lines under the given heading paragraph."""
         name = (cai.get('name') or '').strip()
@@ -2271,6 +2444,7 @@ class WordFormatter:
                     except Exception:
                         pass
                     run = p.add_run('• ' + txt.lstrip('•–—-*● '))
+                    run.bold = False  # CRITICAL: Explicitly set to not bold to prevent inheritance
                     run.font.size = Pt(10)
                     last_para = p
             
@@ -2506,13 +2680,17 @@ class WordFormatter:
         # Common patterns: "Company Name - Role" or "Role at Company" or "Role, Company"
         if ' - ' in title:
             parts = title.split(' - ', 1)
-            return parts[0].strip(), parts[1].strip()
+            if len(parts) >= 2:
+                return parts[0].strip(), parts[1].strip()
+            return parts[0].strip() if parts else '', ''
         elif ' at ' in title.lower():
             parts = re.split(r'\s+at\s+', title, flags=re.IGNORECASE)
-            return parts[1].strip() if len(parts) > 1 else '', parts[0].strip()
+            return parts[1].strip() if len(parts) > 1 else '', parts[0].strip() if parts else ''
         elif ', ' in title:
             parts = title.split(', ', 1)
-            return parts[1].strip(), parts[0].strip()
+            if len(parts) >= 2:
+                return parts[1].strip(), parts[0].strip()
+            return parts[0].strip() if parts else '', ''
         else:
             # Assume entire line is company or role
             return title.strip(), ''
@@ -2522,7 +2700,8 @@ class WordFormatter:
         # Check if degree line contains institution (common pattern: "Degree, Institution")
         if ', ' in degree:
             parts = degree.split(', ', 1)
-            return parts[1].strip()
+            if len(parts) >= 2:
+                return parts[1].strip()
         
         # Look in details for institution keywords
         institution_keywords = ['university', 'college', 'institute', 'school', 'academy']
@@ -3098,6 +3277,28 @@ class WordFormatter:
         
         return replaced
 
+    def _replace_text_preserve_style(self, paragraph, new_text):
+        """
+        Replace paragraph text while preserving ALL formatting
+        Uses StyleManager to maintain alignment, fonts, colors, etc.
+        """
+        if self.style_manager:
+            try:
+                # Use style manager to preserve formatting
+                self.style_manager.replace_text_preserve_style(paragraph, new_text)
+                return True
+            except Exception as e:
+                print(f"  ⚠️  Style preservation failed: {e}")
+                # Fall back to basic replacement
+        
+        # Fallback: basic replacement with alignment preservation
+        original_alignment = paragraph.alignment
+        paragraph.clear()
+        paragraph.add_run(new_text)
+        if original_alignment is not None:
+            paragraph.alignment = original_alignment
+        return True
+    
     def _regex_replace_paragraph(self, paragraph, pattern, replacement):
         """Regex-based replacement across runs: rebuilds paragraph text, removes highlighting, preserves alignment."""
         try:

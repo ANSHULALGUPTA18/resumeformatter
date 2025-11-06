@@ -1,0 +1,29 @@
+# Node / frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+frontend/.turbo/
+frontend/.parcel-cache/
+frontend/.vite/
+frontend/coverage/
+frontend/node_modules/.cache/
+
+# Python / backend
+Backend/venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated outputs
+Backend/Output/
+Backend/Static/uploads/
+
+# Common env and IDE
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+*.log
+.cache/

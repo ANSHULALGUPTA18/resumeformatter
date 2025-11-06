@@ -12,6 +12,21 @@ class Config:
     
     ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
     
+    # OnlyOffice settings
+    ONLYOFFICE_URL = "http://localhost:8080"  # OnlyOffice Document Server URL (accessed from browser)
+    BACKEND_URL = "http://host.docker.internal:5000"  # Backend URL (accessed from OnlyOffice Docker container)
+    
+    # Performance settings
+    USE_ML_PARSER = True  # Set to True for better accuracy, False for faster processing
+    PARALLEL_WORKERS = 4  # Number of parallel resume processing threads
+    
+    # ML Model Optimization
+    CACHE_ML_MODELS = True  # Cache ML models in memory (faster but uses more RAM)
+    USE_LIGHTWEIGHT_MODEL = True  # Use faster, smaller ML model
+    BATCH_ENCODE = True  # Encode multiple texts at once (faster)
+    MAX_TEXT_LENGTH = 512  # Limit text length for ML processing (faster)
+    ENABLE_GPU = False  # Use GPU if available (set to True if you have CUDA)
+    
     @staticmethod
     def init_app(app):
         for folder in [Config.TEMPLATE_FOLDER, Config.RESUME_FOLDER, Config.OUTPUT_FOLDER]:

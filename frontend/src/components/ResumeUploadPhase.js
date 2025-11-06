@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import './ResumeUploadPhase.css';
 import { getCaiContact, saveCaiContact } from '../services/api';
+import CAIContactManager from './CAIContactManager';
 
 const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBack, isFormatting, setIsFormatting }) => {
   const [files, setFiles] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [caiContact, setCaiContact] = useState({ name: '', phone: '', email: '' });
+  const [selectedContacts, setSelectedContacts] = useState([]);
+  const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [showCaiEditor, setShowCaiEditor] = useState(false);
   const [savingCai, setSavingCai] = useState(false);
   const [fileStatuses, setFileStatuses] = useState({});
@@ -83,8 +86,12 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
       formData.append('resume_files', file);
     });
     
-    // Send CAI contact data if provided
-    if (caiContact.name || caiContact.phone || caiContact.email) {
+    // Send ALL selected CAI contacts (multiple)
+    if (selectedContacts && selectedContacts.length > 0) {
+      formData.append('cai_contacts', JSON.stringify(selectedContacts));
+      formData.append('edit_cai_contact', 'true');
+    } else if (caiContact.name || caiContact.phone || caiContact.email) {
+      // Backward compatibility: single contact
       formData.append('cai_contact', JSON.stringify(caiContact));
       formData.append('edit_cai_contact', 'true');
     }
@@ -130,18 +137,23 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
 
   return (
     <div className="resume-upload-phase">
-      {/* CAI Contact header card */}
-      <div className="cai-contact-card">
-        <div className="cai-left">
-          <div className="cai-heading">CAI Contact</div>
-          <div className="cai-name">{caiContact.name || '—'}</div>
-          <div className="cai-line">Phone: {caiContact.phone || '—'}</div>
-          <div className="cai-line">Email: {caiContact.email || '—'}</div>
-        </div>
-        <div className="cai-right">
-          <button className="edit-cai-btn" onClick={handleOpenCai}>Edit CAI Contact</button>
-        </div>
-      </div>
+      {/* CAI Contact Manager - Modern UI */}
+      <CAIContactManager 
+        onSelectContacts={(contacts, contactIds) => {
+          setSelectedContacts(contacts);
+          setSelectedContactIds(contactIds);
+          // Use first contact for backward compatibility
+          if (contacts.length > 0) {
+            setCaiContact({
+              name: contacts[0].name,
+              phone: contacts[0].phone,
+              email: contacts[0].email
+            });
+          }
+        }}
+        selectedContactIds={selectedContactIds}
+        templateId={selectedTemplate}
+      />
       <div className="phase-header">
         <h2>📤 Upload Candidate Resumes</h2>
         <p>Drop your resume files here or click to browse</p>

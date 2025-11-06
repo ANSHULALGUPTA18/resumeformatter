@@ -785,7 +785,7 @@
   border-radius: 2px;
 }
 
-.tabs-container {
+.tabs-container-old-remove-this {
   display: flex;
   gap: 4px;
   min-width: min-content;
@@ -1173,25 +1173,28 @@
   gap: 8px;
 }
 
-.popup-download-btn {
+.popup-save-btn {
   padding: 8px 16px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.popup-download-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+.popup-save-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
-.popup-download-btn:disabled {
+.popup-save-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -2388,4 +2391,81 @@
   .download-all-btn {
     width: 100%;
   }
+}
+
+/* Tabs Row Wrapper - Horizontal Layout */
+.tabs-row-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.tabs-container {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0 12px 0; /* Extra padding for scrollbar */
+  scroll-behavior: smooth;
+  /* Force scrollbar to always show */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.5) rgba(255, 255, 255, 0.1);
+}
+
+/* Enhanced scrollbar for better visibility */
+.tabs-container::-webkit-scrollbar {
+  height: 10px; /* Increased from 6px */
+}
+
+.tabs-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  margin: 0 8px;
+}
+
+.tabs-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: 5px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.tabs-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #8b5cf6 0%, #6366f1 100%);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Format More Button - Compact Version */
+.format-more-btn-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.format-more-btn-compact:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.format-more-icon-compact {
+  font-size: 18px;
+}
+
+.format-more-text-compact {
+  font-size: 14px;
+  letter-spacing: 0.3px;
 }

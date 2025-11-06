@@ -1,0 +1,19 @@
+{
+  "contacts": [
+    {
+      "id": 1,
+      "name": "Tim Brodrick",
+      "phone": "678-427-3660",
+      "email": "Timothy.Brodrick@cai.io",
+      "is_default": false
+    },
+    {
+      "id": 2,
+      "name": "Kevin Brooks",
+      "phone": "804-840-6399",
+      "email": "kevin.brooks@cai.io",
+      "is_default": true
+    }
+  ],
+  "next_id": 3
+}
