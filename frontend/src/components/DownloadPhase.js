@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import './DownloadPhase.css';
 
-const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
+// v2.1 - Back button in header
+const DownloadPhase = ({ results, onBack, onStartOver, darkMode, toggleDarkMode }) => {
   const [selectedPreview, setSelectedPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [editorConfig, setEditorConfig] = useState(null);
@@ -20,15 +21,27 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
     setDownloadingFile(filename);
     
     try {
-      console.log('💾 Saving changes...');
+      console.log('💾 Triggering OnlyOffice save...');
       
-      // Wait 3 seconds for OnlyOffice to auto-save
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Trigger OnlyOffice to save the document
+      if (editorInstanceRef.current) {
+        try {
+          // Call the OnlyOffice save method
+          editorInstanceRef.current.processSaveResult(true);
+          console.log('✅ OnlyOffice save triggered');
+        } catch (saveError) {
+          console.warn('⚠️ Could not trigger explicit save, relying on auto-save:', saveError);
+        }
+      }
+      
+      // Wait for OnlyOffice to complete the save (callback to backend)
+      console.log('⏳ Waiting for save to complete...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
       
       console.log('📥 Downloading saved file...');
       
       // Build download URL with proper filename
-      const downloadUrl = `http://localhost:5000/api/download/${filename}?name=${encodeURIComponent(candidateName)}&template=${encodeURIComponent(templateName)}`;
+      const downloadUrl = `/api/download/${filename}?name=${encodeURIComponent(candidateName)}&template=${encodeURIComponent(templateName)}`;
       
       // Fetch the file
       const response = await fetch(downloadUrl);
@@ -158,7 +171,7 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
         
         // Fetch editor config
         console.log('📡 Fetching editor config...');
-        const response = await fetch(`http://localhost:5000/api/onlyoffice/config/${selectedPreview.filename}`);
+        const response = await fetch(`/api/onlyoffice/config/${selectedPreview.filename}`);
         
         if (!response.ok) {
           console.error('❌ Failed to fetch config:', response.status);
@@ -247,190 +260,92 @@ const DownloadPhase = ({ results, onStartOver, darkMode, toggleDarkMode }) => {
     });
   };
 
+  // If no results or results is empty, show error message
+  if (!results || results.length === 0) {
+    return (
+      <div className="download-phase-v2">
+        <div className="message-content">
+          <div className="message-icon">❌</div>
+          <h3>Formatting Failed</h3>
+          <p>Please try again. If the problem persists, check your resume and template files or contact support.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="download-phase-v2">
-      {/* Ultra-Compact Status Bar */}
+      {/* Status Bar with Back Button and Tabs */}
       <div className={`status-bar ${!headerVisible ? 'hidden' : ''}`}>
-        <div className="status-left">
-          <div className="app-branding">
-            <span className="app-icon">✨</span>
-            <span className="app-name">Resume Formatter Pro</span>
-          </div>
-          <div className="status-divider"></div>
-          <div className="status-badge success">
-            <span className="badge-icon">✓</span>
-            <span className="badge-text">Complete</span>
-          </div>
-          <div className="status-info">
-            <span className="info-count">{results.length}</span>
-            <span className="info-label">resume{results.length !== 1 ? 's' : ''} formatted</span>
-          </div>
-        </div>
-        <div className="status-actions">
-          {results.length > 1 && (
-            <button className="status-btn" onClick={handleDownloadAll} title="Download All">
-              <span className="btn-icon">⬇️</span>
-              <span className="btn-label">All</span>
-            </button>
-          )}
-          <button 
-            className="status-btn secondary" 
-            onClick={toggleDarkMode} 
-            title={darkMode ? 'Light Mode' : 'Dark Mode'}
-          >
-            <span className="btn-icon">{darkMode ? '☀️' : '🌙'}</span>
-            <span className="btn-label">{darkMode ? 'Light' : 'Dark'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Horizontal Tab Bar for File Selection with Format More Button */}
-      <div className={`file-tabs-bar ${!headerVisible ? 'hidden' : ''}`}>
-        <div className="tabs-hint-banner">
-          <span className="hint-icon">👇</span>
-          <span className="hint-text">Click any resume below to preview and edit</span>
-        </div>
-        <div className="tabs-row-wrapper">
-          <div className="tabs-container">
-            {results.map((result, index) => (
-            <div
-              key={index}
-              className={`file-tab ${selectedPreview?.filename === result.filename ? 'active' : ''} ${!selectedPreview ? 'pulse-animation' : ''}`}
-              onClick={() => handlePreviewClick(result)}
-              title="Click to preview and edit"
-            >
-              <div className="tab-icon-wrapper">
-                <div className="tab-icon">📄</div>
-                <div className="click-indicator">👆</div>
-              </div>
-              <div className="tab-content">
-                <div className="tab-name-wrapper">
-                  <div className="tab-name">{result.name || `Resume ${index + 1}`}</div>
-                  <div className="tab-subtitle">Click to edit</div>
-                </div>
-                <div className="tab-badge">DOCX</div>
-              </div>
-              <div className="tab-actions">
-                <button
-                  className="tab-download"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload(result);
-                  }}
-                  title="Download"
+        <button className="back-button-header" onClick={onBack} aria-label="Go back">
+          <i className="fas fa-arrow-left"></i>
+        </button>
+        <div className="tabs-section">
+          <span className="formatted-label">Formatted Resumes:</span>
+          <div className="file-tabs-wrapper">
+            <div className="file-tabs-container">
+              {results.map((result, index) => (
+                <div
+                  key={index}
+                  className={`file-tab-pill ${selectedPreview?.filename === result.filename ? 'active' : ''}`}
                 >
-                  ⬇️
-                </button>
-              </div>
+                  <span 
+                    className="tab-pill-text"
+                    onClick={() => handlePreviewClick(result)}
+                  >
+                    {result.name || result.filename || `Resume_${index + 1}`}
+                  </span>
+                  <button
+                    className="tab-download-icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownload(result);
+                    }}
+                    title="Download"
+                  >
+                    <i className="fas fa-download"></i>
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
           </div>
-          
-          {/* Format More Button - Fixed on Right */}
-          <button className="format-more-btn-compact" onClick={onStartOver} title="Format More Resumes">
-            <span className="format-more-icon-compact">📝</span>
-            <span className="format-more-text-compact">Format More</span>
+          <button className="format-btn" onClick={onStartOver}>
+            Format
           </button>
         </div>
       </div>
 
-      {/* Full-Screen Editor */}
-      <div className="editor-workspace-v2">
+      {/* Main Content Area */}
+      <div className="main-content-new">
         {!selectedPreview ? (
-          <div className="welcome-screen">
-            <div className="welcome-content">
-              <div className="welcome-icon">🎉</div>
-              <h1 className="welcome-title">Your Resumes Are Ready!</h1>
-              <p className="welcome-subtitle">Select a resume from the tabs above to start editing</p>
-              
-              <div className="welcome-features">
-                <div className="feature-card">
-                  <div className="feature-card-icon">✏️</div>
-                  <h3>Full Editing Power</h3>
-                  <p>Change fonts, colors, and formatting</p>
-                </div>
-                <div className="feature-card">
-                  <div className="feature-card-icon">💾</div>
-                  <h3>Auto-Save</h3>
-                  <p>Your changes save automatically</p>
-                </div>
-                <div className="feature-card">
-                  <div className="feature-card-icon">⬇️</div>
-                  <h3>Quick Download</h3>
-                  <p>Download anytime with one click</p>
-                </div>
+          /* Success Card */
+          <div className="success-card-container">
+            <div className="success-card">
+              <div className="success-icon-circle">
+                <i className="fas fa-check"></i>
               </div>
-
-              <div className="welcome-action">
-                <button 
-                  className="welcome-btn"
-                  onClick={() => handlePreviewClick(results[0])}
-                >
-                  <span>🚀</span> Start Editing First Resume
-                </button>
-              </div>
+              <h1 className="success-title">Your resumes are ready!</h1>
+              <p className="success-subtitle">Click tabs above to view or download your formatted resumes</p>
             </div>
           </div>
         ) : (
-          <div className="editor-view">
-            {/* Floating Popup with Download */}
-            {showPopup && (
-              <div className="floating-popup">
-                <div className="popup-content">
-                  <div 
-                    className="popup-info"
-                    onClick={togglePopup}
-                    style={{ cursor: 'pointer' }}
-                    title="Click to toggle popup"
-                  >
-                    <span className="popup-icon">✏️</span>
-                    <span className="popup-name">{selectedPreview.name || 'Resume'}</span>
-                    <span className="live-badge">● Live</span>
-                  </div>
-                  <div className="popup-actions">
-                    <button 
-                      className="popup-save-btn"
-                      onClick={() => handleSaveAndDownload(selectedPreview)}
-                      disabled={downloadingFile === selectedPreview.filename}
-                      title="Save changes and download"
-                    >
-                      {downloadingFile === selectedPreview.filename ? '⏳ Saving...' : '💾 Save & Download'}
-                    </button>
-                    <button 
-                      className="popup-close-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowPopup(false);
-                      }}
-                      title="Close popup (not preview)"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+          /* OnlyOffice Editor */
+          <div className="editor-container-new">
+            {previewLoading && (
+              <div className="editor-loader-new">
+                <div className="loader-spinner-new"></div>
+                <p className="loader-text-new">Loading editor...</p>
               </div>
             )}
-
-            {/* Editor Container */}
-            <div className="editor-frame">
-              {previewLoading && (
-                <div className="editor-loader">
-                  <div className="loader-spinner"></div>
-                  <p className="loader-text">Loading editor...</p>
-                </div>
-              )}
-              <div 
-                className="onlyoffice-editor-container"
-                style={{ 
-                  display: previewLoading ? 'none' : 'block',
-                  width: '100%',
-                  height: 'calc(100vh - 150px)',
-                  minHeight: 'calc(100vh - 150px)'
-                }}
-              >
-                {/* Stable mount node for OnlyOffice. Do NOT change its id dynamically. */}
-                <div id="onlyoffice-editor" ref={previewContainerRef} style={{ height: '100%', width: '100%' }} />
-              </div>
+            <div 
+              className="onlyoffice-editor-wrapper"
+              style={{ 
+                display: previewLoading ? 'none' : 'block',
+                width: '100%',
+                height: '100%'
+              }}
+            >
+              <div id="onlyoffice-editor" ref={previewContainerRef} style={{ height: '100%', width: '100%' }} />
             </div>
           </div>
         )}
