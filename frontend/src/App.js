@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useMsal } from '@azure/msal-react';
 import WizardStepper from './components/WizardStepper';
 import TemplateSelectionNew from './components/TemplateSelectionNew';
 import ResumeUploadPhase from './components/ResumeUploadPhase';
@@ -17,6 +18,7 @@ if (savedFavorites) {
 }
 
 function App() {
+  const { instance, accounts } = useMsal();
   const [currentStep, setCurrentStep] = useState(1); // Always start from step 1
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null); // Don't persist template selection
@@ -42,6 +44,18 @@ function App() {
     setDarkMode(newMode);
     localStorage.setItem('darkMode', JSON.stringify(newMode));
   };
+
+  // Logout handler
+  const handleLogout = () => {
+    instance.logoutPopup({
+      postLogoutRedirectUri: "/",
+      mainWindowRedirectUri: "/"
+    });
+  };
+
+  // Get user info
+  const userAccount = accounts[0];
+  const userName = userAccount?.name || userAccount?.username || 'User';
 
   const fetchTemplates = async () => {
     try {
@@ -141,6 +155,19 @@ function App() {
               <div className="brand-info">
                 <h1 className="brand-title">Resume Formatter Pro</h1>
                 <p className="brand-subtitle">powered by Techgene</p>
+              </div>
+            </div>
+            <div className="header-actions">
+              <div className="auth-controls">
+                <span className="user-info" title={userAccount?.username}>
+                  👤 {userName}
+                </span>
+                <button className="dark-mode-toggle" onClick={toggleDarkMode} title={darkMode ? 'Light Mode' : 'Dark Mode'}>
+                  {darkMode ? '☀️' : '🌙'}
+                </button>
+                <button className="logout-button" onClick={handleLogout} title="Sign out">
+                  🚪 Logout
+                </button>
               </div>
             </div>
           </div>

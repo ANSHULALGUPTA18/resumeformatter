@@ -1212,12 +1212,14 @@ if __name__ == '__main__':
     cleanup_on_startup()
     
     # PRE-WARM ML MODELS FOR INSTANT FIRST REQUEST 
-    try:
-        from utils.model_cache import prewarm_models
-        prewarm_models()
-    except Exception as e:
-        print(f"  Model pre-warming failed: {e}")
-        print("   Models will load on first request instead")
+    # Disabled for faster startup - models will load on first request
+    # try:
+    #     from utils.model_cache import prewarm_models
+    #     prewarm_models()
+    # except Exception as e:
+    #     print(f"  Model pre-warming failed: {e}")
+    #     print("   Models will load on first request instead")
+    print("⚡ Quick startup mode: ML models will load on first request")
     
     import socket
     

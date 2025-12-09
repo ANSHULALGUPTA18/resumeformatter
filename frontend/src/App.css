@@ -591,3 +591,95 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ========================================
+   Authentication Controls (New - No Changes to Existing UI)
+   ======================================== */
+
+.auth-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.App.dark-mode .user-info {
+  color: #94a3b8;
+  background: rgba(167, 139, 250, 0.15);
+}
+
+.user-info:hover {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.App.dark-mode .user-info:hover {
+  background: rgba(167, 139, 250, 0.25);
+}
+
+.logout-button {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.logout-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.logout-button:active {
+  transform: translateY(0);
+}
+
+/* Responsive design for auth controls */
+@media (max-width: 768px) {
+  .auth-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .user-info {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+    max-width: 150px;
+  }
+  
+  .logout-button {
+    font-size: 0.8rem;
+    padding: 8px 16px;
+  }
+  
+  .dark-mode-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+}
