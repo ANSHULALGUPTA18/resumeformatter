@@ -6,7 +6,7 @@
 3. [Installation Guide](#installation-guide)
 4. [Project Structure](#project-structure)
 5. [How It Works](#how-it-works)
-6. [Running the Application](#running-the-application)
+6. [Running the Application](#running-the-application
 7. [Features](#features)
 8. [Troubleshooting](#troubleshooting)
 9. [API Documentation](#api-documentation)
@@ -25,6 +25,9 @@
 - ✅ **Multiple Template Support** - Georgia, Florida, and custom templates
 - ✅ **Batch Processing** - Format multiple resumes at once
 - ✅ **DOCX & PDF Support** - Handles both input formats
+- 🔐 **Microsoft Authentication** - Secure login with Azure AD (Enterprise SSO)
+
+> 🆕 **NEW!** Microsoft Account login now available! See [Azure AD Setup Guide](AZURE_AUTH_QUICKSTART.md) for details.
 
 ---
 

@@ -321,5 +321,5 @@ class SectionDetector:
         skill_keywords = ['python', 'java', 'sql', 'aws', 'proficient', 'experienced']
         return any(kw in text_lower for kw in skill_keywords)
 
-# Global instance
-section_detector = SectionDetector(use_ml=True)
+# Global instance - using rule-based only for faster startup
+section_detector = SectionDetector(use_ml=False)

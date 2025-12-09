@@ -576,12 +576,14 @@ def onlyoffice_status():
 
 if __name__ == '__main__':
     # PRE-WARM ML MODELS FOR INSTANT FIRST REQUEST 
-    try:
-        from utils.model_cache import prewarm_models
-        prewarm_models()
-    except Exception as e:
-        print(f"  Model pre-warming failed: {e}")
-        print("   Models will load on first request instead")
+    # Disabled for faster startup - models will load on first request
+    # try:
+    #     from utils.model_cache import prewarm_models
+    #     prewarm_models()
+    # except Exception as e:
+    #     print(f"  Model pre-warming failed: {e}")
+    #     print("   Models will load on first request instead")
+    print("⚡ Quick startup mode: ML models will load on first request")
     
     import socket
     
@@ -608,4 +610,5 @@ if __name__ == '__main__':
     print("   • /api/onlyoffice/callback/<filename>")
     print("="*70 + "\n")
     # CRITICAL: Bind to 0.0.0.0 to accept connections from Docker
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Run without debug mode to avoid reloader issues
+    app.run(debug=False, host='0.0.0.0', port=5000)
