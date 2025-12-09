@@ -4,16 +4,38 @@
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#6366f1" />
     <meta
       name="description"
-      content="Resume Formatter - Transform your resume with professional templates"
+      content="Resume Formatter Pro - Transform your resume with professional templates and AI-powered formatting"
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <title>Resume Formatter</title>
-    <!-- OnlyOffice Document Server API -->
-    <script type="text/javascript" src="http://localhost:8080/web-apps/apps/api/documents/api.js"></script>
+    <!-- OnlyOffice Document Server API - Load dynamically based on environment -->
+    <script type="text/javascript">
+      // Detect environment: if hostname is localhost, use local OnlyOffice; otherwise use Azure
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const onlyofficeUrl = isLocal
+        ? 'http://localhost:8080/web-apps/apps/api/documents/api.js'
+        : 'https://onlyoffice.reddesert-f6724e64.centralus.azurecontainerapps.io/web-apps/apps/api/documents/api.js';
+
+      // Dynamically load OnlyOffice API script
+      const script = document.createElement('script');
+      script.type = 'text/javascript';
+      script.src = onlyofficeUrl;
+      script.async = false;
+      document.head.appendChild(script);
+
+      console.log('🔧 Environment:', isLocal ? 'LOCAL' : 'PRODUCTION');
+      console.log('📡 Loading OnlyOffice API from:', onlyofficeUrl);
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

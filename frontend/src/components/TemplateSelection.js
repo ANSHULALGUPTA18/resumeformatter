@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './TemplateSelection.css';
 
-const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, onUpload, darkMode }) => {
+const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, onUpload, darkMode, onBack }) => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [file, setFile] = useState(null);
@@ -11,6 +11,8 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [hoveredTemplate, setHoveredTemplate] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -79,7 +81,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
     formData.append('template_file', file);
 
     try {
-      const response = await fetch('http://localhost:5000/api/templates', {
+      const response = await fetch('/api/templates', {
         method: 'POST',
         body: formData
       });
@@ -102,10 +104,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
         setFile(null);
         // Refresh template list
         onUpload();
-        // Auto-select the newly uploaded template and move to next step
-        if (data.id) {
-          onSelect(data.id);
-        }
+        // Do NOT auto-select the uploaded template; user will choose manually
       } else {
         alert(data.message || 'Upload failed');
       }
@@ -119,6 +118,14 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
 
   return (
     <div className={`template-selection ${darkMode ? 'dark-mode' : ''}`}>
+      {/* Back Button */}
+      {onBack && (
+        <button className="back-button" onClick={onBack} title="Go back">
+          <span className="back-arrow">←</span>
+          <span className="back-text">Back</span>
+        </button>
+      )}
+
       <div className="phase-header">
         <h2>🎨 Choose Your Template</h2>
         <p>Select a template to format your resumes or add a new one</p>
@@ -151,7 +158,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
           >
             <div className="template-preview">
               <img 
-                src={`http://localhost:5000/api/templates/${template.id}/thumbnail`}
+                src={`/api/templates/${template.id}/thumbnail?t=${Date.now()}`}
                 alt={template.name}
                 className="template-thumbnail-img"
                 onError={(e) => {
@@ -216,7 +223,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
                   className="more-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDelete(template.id);
+                    setDeleteConfirmId(template.id);
                   }}
                   title="Delete template"
                 >
@@ -242,7 +249,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
         >
           <div className="add-template-content">
             <div className="add-icon pulse">+</div>
-            <h3>Add New Template</h3>
+            <h3>+ Add New Template</h3>
             <p>{dragOver ? 'Drop your .docx file here' : 'Upload or drag & drop your template'}</p>
             <span className="upload-hint">Supports .docx, .pdf, .doc</span>
           </div>
@@ -314,7 +321,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
             <div className="preview-body">
               <div className="preview-image-container">
                 <img 
-                  src={`http://localhost:5000/api/templates/${previewTemplate.id}/thumbnail`}
+                  src={`/api/templates/${previewTemplate.id}/thumbnail?t=${Date.now()}`}
                   alt={previewTemplate.name}
                   className="preview-image"
                   onError={(e) => {
@@ -340,6 +347,43 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
                 setPreviewTemplate(null);
               }}>
                 🪄 Use This Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && (
+        <div className="modal-overlay" onClick={() => !isDeleting && setDeleteConfirmId(null)}>
+          <div className="modal-content delete-confirmation" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-icon">🗑️</div>
+            <h3>Delete Template?</h3>
+            <p>Are you sure you want to delete this template? This action cannot be undone.</p>
+            <div className="delete-actions">
+              <button 
+                className="btn-secondary" 
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-danger" 
+                onClick={async () => {
+                  setIsDeleting(true);
+                  try {
+                    await onDelete(deleteConfirmId);
+                    setDeleteConfirmId(null);
+                  } catch (error) {
+                    console.error('Delete error:', error);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Template'}
               </button>
             </div>
           </div>

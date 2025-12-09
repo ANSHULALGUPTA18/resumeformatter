@@ -7,15 +7,21 @@ class Config:
     RESUME_FOLDER = os.path.join(UPLOAD_FOLDER, 'resumes')
     OUTPUT_FOLDER = os.path.join(BASE_DIR, 'output')
     DATABASE = os.path.join(BASE_DIR, 'templates.db')
-    
+
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
-    
+
     ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
-    
-    # OnlyOffice settings
-    ONLYOFFICE_URL = "http://localhost:8080"  # OnlyOffice Document Server URL (accessed from browser)
-    BACKEND_URL = "http://host.docker.internal:5000"  # Backend URL (accessed from OnlyOffice Docker container)
-    
+
+    # OnlyOffice settings - Auto-detect environment
+    # Check if running locally or in production
+    FLASK_ENV = os.getenv('FLASK_ENV', 'development')
+    IS_LOCAL = FLASK_ENV != 'production'
+
+    # Use local URLs for development, Azure URLs for production
+    # IMPORTANT: For local Docker, use host.docker.internal so OnlyOffice container can reach Flask
+    ONLYOFFICE_URL = "http://localhost:8080" if IS_LOCAL else "https://onlyoffice.reddesert-f6724e64.centralus.azurecontainerapps.io"
+    BACKEND_URL = "http://host.docker.internal:5000" if IS_LOCAL else "https://resume-formatter.reddesert-f6724e64.centralus.azurecontainerapps.io"
+
     # Performance settings
     USE_ML_PARSER = True  # Set to True for better accuracy, False for faster processing
     PARALLEL_WORKERS = 4  # Number of parallel resume processing threads

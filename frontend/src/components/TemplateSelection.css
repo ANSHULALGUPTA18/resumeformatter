@@ -1,6 +1,85 @@
 .template-selection {
   animation: fadeIn 0.5s ease-in;
   transition: background-color 0.3s ease, color 0.3s ease;
+  padding: 2rem 1rem;
+  position: relative;
+}
+
+/* Back Button */
+.back-button {
+  position: fixed;
+  left: 16px;
+  top: 80px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #6b7280;
+  border: 1px solid rgba(229, 231, 235, 0.8);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+}
+
+.back-button:hover {
+  background: rgba(249, 250, 251, 0.98);
+  color: #374151;
+  border-color: rgba(209, 213, 219, 0.9);
+  transform: translateX(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.back-button:active {
+  transform: translateX(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.back-arrow {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.back-text {
+  display: none;
+  font-size: 12px;
+}
+
+@media (min-width: 768px) {
+  .back-text {
+    display: inline;
+  }
+  
+  .back-button {
+    padding: 8px 14px;
+  }
+}
+
+.phase-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.phase-header h2 {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.5px;
+}
+
+.phase-header p {
+  font-size: 1.1rem;
+  color: #64748b;
+  font-weight: 500;
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 
 /* Dark Mode Styles */
@@ -94,6 +173,26 @@
   background: #111827;
   border-color: #374151;
   color: #9ca3af;
+}
+
+.template-selection.dark-mode .delete-confirmation h3 {
+  color: #e5e7eb;
+}
+
+.template-selection.dark-mode .delete-confirmation p {
+  color: #9ca3af;
+}
+
+.template-selection.dark-mode .back-button {
+  background: rgba(31, 41, 55, 0.95);
+  color: #9ca3af;
+  border-color: rgba(55, 65, 81, 0.8);
+}
+
+.template-selection.dark-mode .back-button:hover {
+  background: rgba(55, 65, 81, 0.98);
+  color: #e5e7eb;
+  border-color: rgba(75, 85, 99, 0.9);
 }
 
 @keyframes fadeIn {
@@ -704,6 +803,66 @@
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-danger {
+  padding: 12px 24px;
+  border: none;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+}
+
+/* Delete Confirmation Modal */
+.delete-confirmation {
+  text-align: center;
+  max-width: 400px;
+}
+
+.delete-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
+
+.delete-confirmation h3 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.delete-confirmation p {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.delete-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
 }
 
 /* Hover Overlay */

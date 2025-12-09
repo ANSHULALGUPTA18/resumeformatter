@@ -5,25 +5,44 @@ import uuid
 import os
 import traceback
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from config import Config
 from models.database import TemplateDB
+from models.persistent_database import get_persistent_template_db, get_persistent_cai_contact_db
 from utils.advanced_template_analyzer import analyze_template
 from utils.advanced_resume_parser import parse_resume
+from utils.doc_converter import convert_doc_to_docx, needs_conversion
+from utils.azure_storage import get_storage_manager
 
 # Import routes
 from routes.onlyoffice_routes import onlyoffice_bp
-from routes.cai_contact_routes import cai_contact_bp
 
 # Try to import enhanced formatter, fallback to standard if not available
 try:
     from utils.enhanced_formatter_integration import format_resume_intelligent
-    print("✅ Enhanced intelligent formatter loaded")
+    print("[OK] Enhanced intelligent formatter loaded")
 except ImportError:
     from utils.intelligent_formatter import format_resume_intelligent
-    print("⚠️  Using standard formatter (enhanced version not available)")
+    print("[WARN] Using standard formatter (enhanced version not available)")
 
-app = Flask(__name__)
+# Configure Flask to use React build output
+# Check if running in Docker container
+if os.path.exists('/app/frontend'):
+    # Docker container path
+    frontend_dir = '/app/frontend'
+else:
+    # Local development path
+    frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'build')
+
+static_dir = os.path.join(frontend_dir, 'static')
+
+app = Flask(__name__, 
+           static_folder=static_dir,
+           template_folder=frontend_dir)
 app.config.from_object(Config)
 Config.init_app(app)
 
@@ -44,6 +63,8 @@ CORS(
     app,
     resources={r"/api/*": {
         "origins": [
+            "https://resume-formatter.reddesert-f6724e64.centralus.azurecontainerapps.io",  # Frontend
+            "https://onlyoffice.reddesert-f6724e64.centralus.azurecontainerapps.io",  # OnlyOffice
             "http://localhost:3000",
             "http://localhost:3001",
             "http://127.0.0.1:3000",
@@ -65,9 +86,12 @@ CORS(
 
 # Register blueprints
 app.register_blueprint(onlyoffice_bp)
-app.register_blueprint(cai_contact_bp)
 
-db = TemplateDB()
+# Initialize databases
+db = TemplateDB()  # Keep for backward compatibility
+persistent_db = get_persistent_template_db()  # New persistent storage
+cai_db = get_persistent_cai_contact_db()  # Persistent CAI contacts
+storage_manager = get_storage_manager()  # Azure storage manager
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
@@ -81,22 +105,31 @@ def _cai_store_path():
 
 @app.route('/api/cai-contact', methods=['GET'])
 def get_cai_contact():
-    """Return stored CAI contact. If none, return empty fields."""
-    path = _cai_store_path()
-    data = {"name": "", "phone": "", "email": ""}
+    """Return stored CAI contact from persistent storage. If none, return empty fields."""
     try:
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                loaded = json.load(f) or {}
-                data.update({k: loaded.get(k, "") for k in data.keys()})
-    except Exception:
-        pass
-    return jsonify({"success": True, "contact": data})
+        # Try persistent storage first
+        contact_data = cai_db.get_contact()
+        print(f"✅ CAI contact retrieved from persistent storage: {contact_data.get('name', 'No name')}")
+        return jsonify({"success": True, "contact": contact_data})
+    except Exception as e:
+        print(f"⚠️ Error reading CAI contact from persistent storage: {e}")
+        # Fallback to local storage
+        try:
+            path = _cai_store_path()
+            data = {"name": "", "phone": "", "email": ""}
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                print(f"✅ CAI contact retrieved from local fallback: {data.get('name', 'No name')}")
+            return jsonify({"success": True, "contact": data})
+        except Exception as e2:
+            print(f"❌ Error reading CAI contact from fallback: {e2}")
+            return jsonify({"success": True, "contact": {"name": "", "phone": "", "email": ""}})
 
 
 @app.route('/api/cai-contact', methods=['POST'])
 def save_cai_contact():
-    """Persist CAI contact. Overwrites stored values. Body: JSON {name, phone, email}."""
+    """Persist CAI contact to persistent storage. Overwrites stored values. Body: JSON {name, phone, email}."""
     try:
         payload = request.get_json(silent=True) or {}
         data = {
@@ -104,23 +137,187 @@ def save_cai_contact():
             "phone": str(payload.get("phone", "")).strip(),
             "email": str(payload.get("email", "")).strip(),
         }
-        path = _cai_store_path()
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return jsonify({"success": True, "contact": data})
+        
+        # Save to persistent storage
+        success = cai_db.save_contact(data)
+        
+        if success:
+            print(f"✅ CAI contact saved to persistent storage: {data.get('name', 'No name')}")
+            
+            # Also save to local fallback for backward compatibility
+            try:
+                path = _cai_store_path()
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                print(f"✅ CAI contact also saved to local fallback")
+            except Exception as e:
+                print(f"⚠️ Failed to save to local fallback: {e}")
+            
+            return jsonify({"success": True, "contact": data})
+        else:
+            print(f"❌ Failed to save CAI contact to persistent storage")
+            return jsonify({"success": False, "message": "Failed to save to persistent storage"}), 500
+            
     except Exception as e:
+        print(f"❌ Error saving CAI contact: {e}")
         traceback.print_exc()
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/api/cai-contact', methods=['DELETE'])
+def delete_cai_contact():
+    """Delete CAI contact from persistent storage."""
+    try:
+        # Clear the contact data
+        empty_data = {"name": "", "phone": "", "email": ""}
+        
+        # Save empty contact to persistent storage (effectively deleting it)
+        success = cai_db.save_contact(empty_data)
+        
+        if success:
+            print(f"✅ CAI contact deleted from persistent storage")
+            
+            # Also clear local fallback
+            try:
+                path = _cai_store_path()
+                if os.path.exists(path):
+                    os.remove(path)
+                print(f"✅ CAI contact also deleted from local fallback")
+            except Exception as e:
+                print(f"⚠️ Failed to delete from local fallback: {e}")
+            
+            return jsonify({"success": True, "message": "Contact deleted"})
+        else:
+            print(f"❌ Failed to delete CAI contact from persistent storage")
+            return jsonify({"success": False, "message": "Failed to delete from persistent storage"}), 500
+            
+    except Exception as e:
+        print(f"❌ Error deleting CAI contact: {e}")
+        traceback.print_exc()
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/api/templates/<template_id>/cai-contacts', methods=['GET'])
+def get_template_cai_contacts(template_id):
+    """Get CAI contacts associated with a specific template"""
+    try:
+        # For now, return the single CAI contact as this is our current implementation
+        # In the future, this could be expanded to support multiple contacts per template
+        contact_data = cai_db.get_contact()
+        
+        if contact_data:
+            return jsonify({
+                "success": True, 
+                "contacts": [{"id": 1, **contact_data}],
+                "contact_ids": [1]
+            })
+        else:
+            return jsonify({
+                "success": True, 
+                "contacts": [],
+                "contact_ids": []
+            })
+    except Exception as e:
+        print(f"❌ Error getting template CAI contacts: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/api/templates/<template_id>/cai-contacts', methods=['POST'])
+def save_template_cai_contacts(template_id):
+    """Save CAI contacts for a specific template"""
+    try:
+        # For now, this is a placeholder since we use a single global CAI contact
+        # In the future, this could be expanded to support template-specific contacts
+        data = request.get_json()
+        contact_ids = data.get('contact_ids', [])
+        
+        print(f"📝 Template {template_id} CAI contact mapping saved: {contact_ids}")
+        return jsonify({"success": True, "message": "Template contact mapping saved"})
+    except Exception as e:
+        print(f"❌ Error saving template CAI contacts: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+# ===== Plural endpoint compatibility =====
+@app.route('/api/cai-contacts', methods=['GET', 'POST'])
+def cai_contacts_plural():
+    """Handle both GET and POST for plural endpoint - compatibility with frontend"""
+    try:
+        if request.method == 'GET':
+            # Inline implementation to avoid function call issues
+            try:
+                contact_data = cai_db.get_contact()
+                return jsonify({"success": True, "contact": contact_data})
+            except Exception as e:
+                return jsonify({"success": True, "contact": {"name": "", "phone": "", "email": ""}})
+        else:  # POST
+            # Inline implementation to avoid function call issues
+            try:
+                payload = request.get_json(silent=True) or {}
+                data = {
+                    "name": str(payload.get("name", "")).strip(),
+                    "phone": str(payload.get("phone", "")).strip(),
+                    "email": str(payload.get("email", "")).strip(),
+                }
+                success = cai_db.save_contact(data)
+                if success:
+                    return jsonify({"success": True, "contact": data})
+                else:
+                    return jsonify({"success": False, "message": "Failed to save"}), 500
+            except Exception as e:
+                return jsonify({"success": False, "message": str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": f"Route error: {str(e)}"}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
 
+# Test routes removed - using multiple decorators approach instead
+
+@app.route('/api/storage-status', methods=['GET'])
+def storage_status():
+    """Get Azure Storage connection status"""
+    try:
+        status = storage_manager.test_connection()
+        return jsonify({
+            'success': True,
+            'storage_status': status
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'storage_status': {
+                'connected': False,
+                'storage_type': 'unknown',
+                'message': f'Error checking storage: {str(e)}',
+                'containers': []
+            }
+        })
+
 @app.route('/api/templates', methods=['GET'])
 def get_templates():
-    """Get all templates"""
-    templates = db.get_all_templates()
-    return jsonify({'success': True, 'templates': templates})
+    """Get all templates from persistent storage"""
+    try:
+        # PRIMARY: Use Azure persistent storage
+        templates = persistent_db.get_all_templates()
+        if templates and len(templates) > 0:
+            print(f"✅ Retrieved {len(templates)} templates from Azure persistent storage")
+            for template in templates:
+                print(f"  📋 Template: {template['id']} - {template['name']}")
+            return jsonify({'success': True, 'templates': templates})
+
+        # FALLBACK: Try local database only if Azure is empty or unavailable
+        templates = db.get_all_templates()
+        if templates and len(templates) > 0:
+            print(f"⚠️  Retrieved {len(templates)} templates from local fallback database")
+            for template in templates:
+                print(f"  📋 Template: {template['id']} - {template['name']}")
+            return jsonify({'success': True, 'templates': templates})
+
+        print(f"📭 No templates found in any database")
+        return jsonify({'success': True, 'templates': []})
+    except Exception as e:
+        print(f"❌ Error getting templates: {e}")
+        return jsonify({'success': True, 'templates': []})
 
 @app.route('/api/templates', methods=['POST'])
 def upload_template():
@@ -148,13 +345,71 @@ def upload_template():
         
         print(f"\n{'='*70}")
         print(f"📤 UPLOADING TEMPLATE: {name}")
+        print(f"📄 Original file type: {file_type}")
         print(f"{'='*70}\n")
         
-        # Analyze template with advanced analyzer
-        format_data = analyze_template(file_path)
+        # Handle .doc files - try conversion or provide helpful message
+        final_file_path = file_path
+        final_file_type = file_type
         
-        # Save to database
-        db.add_template(template_id, name, saved_filename, file_type, format_data)
+        if needs_conversion(filename):
+            print(f"🔄 Converting .doc to .docx...")
+            converted_path = convert_doc_to_docx(file_path)
+            
+            if converted_path and os.path.exists(converted_path):
+                print(f"✅ Successfully converted to .docx")
+                # Update file info to point to converted file
+                final_file_path = converted_path
+                final_file_type = 'docx'
+                
+                # Update saved filename to reflect the conversion
+                converted_filename = os.path.basename(converted_path)
+                saved_filename = converted_filename
+                
+                # Remove original .doc file to save space
+                try:
+                    os.remove(file_path)
+                    print(f"🗑️  Removed original .doc file")
+                except:
+                    pass
+            else:
+                print(f"⚠️  .doc conversion not available in this deployment")
+                return jsonify({
+                    'success': False, 
+                    'message': 'Please convert your .doc file to .docx format before uploading. You can use Microsoft Word: File → Save As → Word Document (.docx)'
+                }), 400
+        
+        # Analyze template with advanced analyzer
+        format_data = analyze_template(final_file_path)
+        
+        # Save to persistent storage
+        persistent_success = persistent_db.add_template(template_id, name, saved_filename, final_file_type, format_data)
+        
+        if persistent_success:
+            # Upload file to persistent storage
+            file_upload_success = persistent_db.upload_template_file(template_id, final_file_path, saved_filename)
+            
+            if file_upload_success:
+                print(f"✅ Template '{name}' saved to persistent storage")
+                
+                # Also save to local database for backward compatibility
+                try:
+                    db.add_template(template_id, name, saved_filename, final_file_type, format_data)
+                    print(f"✅ Template '{name}' also saved to local database")
+                except Exception as e:
+                    print(f"⚠️ Failed to save to local database: {e}")
+            else:
+                print(f"❌ Failed to upload template file to persistent storage")
+                return jsonify({'success': False, 'message': 'Failed to upload template file'}), 500
+        else:
+            print(f"❌ Failed to save template metadata to persistent storage")
+            # Fallback to local database
+            try:
+                db.add_template(template_id, name, saved_filename, final_file_type, format_data)
+                print(f"✅ Template '{name}' saved to local database (fallback)")
+            except Exception as e:
+                print(f"❌ Failed to save to local database: {e}")
+                return jsonify({'success': False, 'message': 'Failed to save template'}), 500
         
         return jsonify({
             'success': True,
@@ -175,10 +430,33 @@ def format_resumes():
             return jsonify({'success': False, 'message': 'Missing template or files'}), 400
         
         template_id = request.form['template_id']
-        template = db.get_template(template_id)
+        
+        # Try to get template from persistent storage first
+        template = persistent_db.get_template(template_id)
+        
+        if not template:
+            # Fallback to local database
+            template = db.get_template(template_id)
+            print(f"✅ Template retrieved from local fallback: {template_id}")
+        else:
+            print(f"✅ Template retrieved from persistent storage: {template_id}")
         
         if not template:
             return jsonify({'success': False, 'message': 'Template not found'}), 404
+        
+        # Download template file from persistent storage if needed
+        template_filename = template['filename']
+        local_template_path = os.path.join(Config.TEMPLATE_FOLDER, template_filename)
+        
+        if not os.path.exists(local_template_path):
+            print(f"📥 Downloading template file from persistent storage...")
+            download_success = persistent_db.download_template_file(template_id, template_filename, local_template_path)
+            
+            if not download_success:
+                print(f"❌ Failed to download template file from persistent storage")
+                return jsonify({'success': False, 'message': 'Template file not available'}), 404
+            else:
+                print(f"✅ Template file downloaded successfully")
         
         files = request.files.getlist('resume_files')
         formatted_files = []
@@ -245,11 +523,35 @@ def format_resumes():
             
             print(f"\n{'─'*70}")
             print(f"📄 Processing Resume {idx}/{total}: {filename}")
+            print(f"📄 Original file type: {file_type}")
             print(f"{'─'*70}")
+            
+            # Convert .doc to .docx if needed
+            final_file_path = file_path
+            final_file_type = file_type
+            
+            if needs_conversion(filename):
+                print(f"🔄 Converting resume .doc to .docx...")
+                converted_path = convert_doc_to_docx(file_path)
+                
+                if converted_path and os.path.exists(converted_path):
+                    print(f"✅ Successfully converted resume to .docx")
+                    final_file_path = converted_path
+                    final_file_type = 'docx'
+                    
+                    # Remove original .doc file to save space
+                    try:
+                        os.remove(file_path)
+                        print(f"🗑️  Removed original .doc file")
+                    except:
+                        pass
+                else:
+                    print(f"⚠️  Resume .doc conversion not available, skipping this file")
+                    return None  # Skip this resume file
             
             # Parse resume with advanced parser (with timing)
             parse_start = time.time()
-            resume_data = parse_resume(file_path, file_type)
+            resume_data = parse_resume(final_file_path, final_file_type)
             parse_time = time.time() - parse_start
             print(f"  ⏱️  Parsing took: {parse_time:.2f}s")
             
@@ -338,7 +640,7 @@ def format_resumes():
 
 @app.route('/api/download/<filename>')
 def download_file(filename):
-    """Download formatted resume with proper filename"""
+    """Download formatted resume with proper filename and auto-cleanup"""
     file_path = os.path.join(Config.OUTPUT_FOLDER, filename)
     
     if not os.path.exists(file_path):
@@ -359,12 +661,25 @@ def download_file(filename):
     else:
         download_name = filename
     
-    return send_from_directory(
+    # Send file
+    response = send_from_directory(
         Config.OUTPUT_FOLDER, 
         filename, 
         as_attachment=True,
         download_name=download_name
     )
+    
+    # Schedule file deletion after download (cleanup to prevent storage buildup)
+    @response.call_on_close
+    def cleanup_file():
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"🗑️  Auto-deleted: {filename}")
+        except Exception as e:
+            print(f"⚠️  Failed to delete {filename}: {e}")
+    
+    return response
 
 @app.route('/api/preview/<filename>')
 def preview_file(filename):
@@ -459,65 +774,212 @@ def preview_file(filename):
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/templates/<template_id>/thumbnail')
-def get_template_thumbnail(template_id):
-    """Generate and return template thumbnail image with caching"""
+@app.route('/api/templates/<template_id>/thumbnail', methods=['DELETE'])
+def delete_template_thumbnail(template_id):
+    """Delete template thumbnail to force regeneration"""
     try:
-        template = db.get_template(template_id)
+        # Delete from Azure Storage
+        if storage_manager.delete_thumbnail(template_id):
+            print(f"✅ Thumbnail deleted from storage: {template_id}")
+        
+        # Delete local cache if exists
+        thumbnail_filename = f"{template_id}_thumb.png"
+        thumbnail_path = os.path.join(Config.OUTPUT_FOLDER, thumbnail_filename)
+        if os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
+            print(f"✅ Local thumbnail cache cleared: {template_id}")
+        
+        return jsonify({'success': True, 'message': 'Thumbnail deleted'}), 200
+    except Exception as e:
+        print(f"❌ Error deleting thumbnail: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/templates/<template_id>/thumbnail', methods=['GET'])
+def get_template_thumbnail(template_id):
+    """Generate and return template thumbnail image with Azure Storage caching"""
+    try:
+        import platform
+        
+        # Get template from persistent storage first, then fallback to memory DB
+        template = persistent_db.get_template(template_id)
+        if not template:
+            # Fallback to local database
+            template = db.get_template(template_id)
+            print(f"✅ Template retrieved from local fallback for thumbnail: {template_id}")
+        else:
+            print(f"✅ Template retrieved from persistent storage for thumbnail: {template_id}")
+        
         if not template:
             return jsonify({'success': False, 'message': 'Template not found'}), 404
         
-        file_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
-        if not os.path.exists(file_path):
-            return jsonify({'success': False, 'message': 'Template file not found'}), 404
-        
-        # Generate thumbnail (convert first page to image)
+        # Local thumbnail path
         thumbnail_filename = f"{template_id}_thumb.png"
         thumbnail_path = os.path.join(Config.OUTPUT_FOLDER, thumbnail_filename)
         
-        # Check if thumbnail already exists
-        if not os.path.exists(thumbnail_path):
+        # Check if thumbnail exists in Azure Storage first
+        if storage_manager.thumbnail_exists(template_id):
+            # Download from Azure to local cache
+            if storage_manager.download_thumbnail(template_id, thumbnail_path):
+                print(f"✅ Thumbnail served from Azure Storage: {template_id}")
+                response = send_from_directory(Config.OUTPUT_FOLDER, thumbnail_filename, mimetype='image/png')
+                response.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+                response.headers['ETag'] = template_id
+                return response
+        
+        # Thumbnail doesn't exist in Azure - need to generate it
+        # Thumbnails require Windows-only tooling (COM/docx2pdf). On non-Windows, use fallback.
+        if platform.system().lower() != 'windows' or os.name != 'nt':
+            print(f"⚠️ Thumbnail generation not supported on {platform.system()}, using fallback")
+            
+            # Try to create document preview thumbnail
             try:
-                import pythoncom
-                from docx2pdf import convert
-                import fitz  # PyMuPDF for PDF to image conversion
-                from PIL import Image
+                from utils.document_thumbnail import save_placeholder_thumbnail, create_docx_preview_thumbnail
+                print(f"🎨 Creating document preview thumbnail for: {template['name']}")
                 
-                # Convert DOCX to PDF first
-                temp_pdf = os.path.join(Config.OUTPUT_FOLDER, f"{template_id}_temp.pdf")
+                # First try to download the actual DOCX file for preview
+                temp_template_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
+                docx_preview_created = False
                 
-                pythoncom.CoInitialize()
                 try:
-                    convert(file_path, temp_pdf)
-                finally:
-                    pythoncom.CoUninitialize()
+                    # Check if template is from persistent storage or memory DB
+                    template_from_persistent = persistent_db.get_template(template_id) is not None
+                    
+                    if template_from_persistent:
+                        # Try to download template file from Azure Storage
+                        if persistent_db.download_template_file(template_id, template['filename'], temp_template_path):
+                            print(f"📄 Downloaded template file from Azure for preview: {template['filename']}")
+                            if create_docx_preview_thumbnail(temp_template_path, thumbnail_path):
+                                print(f"✅ Created DOCX preview thumbnail: {template_id}")
+                                docx_preview_created = True
+                            # Clean up downloaded file
+                            try:
+                                os.remove(temp_template_path)
+                            except:
+                                pass
+                    else:
+                        # Template is from memory DB - file should be in local TEMPLATE_FOLDER
+                        local_template_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
+                        if os.path.exists(local_template_path):
+                            print(f"📄 Using local template file for preview: {template['filename']}")
+                            if create_docx_preview_thumbnail(local_template_path, thumbnail_path):
+                                print(f"✅ Created DOCX preview thumbnail from local file: {template_id}")
+                                docx_preview_created = True
+                        else:
+                            print(f"⚠️ Local template file not found: {local_template_path}")
+                except Exception as download_e:
+                    print(f"⚠️ Could not access template for preview: {download_e}")
                 
-                # Convert first page of PDF to image
-                if os.path.exists(temp_pdf):
-                    pdf_document = fitz.open(temp_pdf)
-                    first_page = pdf_document[0]
-                    # Render at 120 DPI for faster loading (reduced from 150)
-                    pix = first_page.get_pixmap(matrix=fitz.Matrix(120/72, 120/72))
-                    
-                    # Save as PNG first
-                    temp_png = thumbnail_path.replace('.png', '_temp.png')
-                    pix.save(temp_png)
-                    pdf_document.close()
-                    
-                    # Optimize with PIL for smaller file size
-                    img = Image.open(temp_png)
-                    img.save(thumbnail_path, 'PNG', optimize=True, quality=85)
-                    
-                    # Clean up temp files
-                    os.remove(temp_pdf)
-                    os.remove(temp_png)
+                # If DOCX preview failed, use enhanced placeholder
+                if not docx_preview_created:
+                    if save_placeholder_thumbnail(template['name'], template_id, thumbnail_path):
+                        print(f"✅ Created enhanced document thumbnail: {template_id}")
+                    else:
+                        print(f"❌ Failed to create document thumbnail for: {template_id}")
+                        return jsonify({'error': 'Failed to create thumbnail'}), 500
+                
+                # Upload thumbnail to Azure Storage for caching
+                try:
+                    if storage_manager.upload_thumbnail(template_id, thumbnail_path):
+                        print(f"✅ Document thumbnail uploaded to Azure: {template_id}")
+                except Exception as upload_e:
+                    print(f"⚠️ Failed to upload thumbnail to Azure: {upload_e}")
+                
+                # Return the thumbnail
+                if os.path.exists(thumbnail_path):
+                    response = send_from_directory(Config.OUTPUT_FOLDER, thumbnail_filename, mimetype='image/png')
+                    response.headers['Cache-Control'] = 'public, max-age=3600'
+                    response.headers['ETag'] = f"{template_id}-document"
+                    return response
                 else:
-                    return jsonify({'success': False, 'message': 'PDF conversion failed'}), 500
+                    print(f"❌ Thumbnail file not found after creation: {thumbnail_path}")
+                    return jsonify({'error': 'Thumbnail file not created'}), 500
                     
-            except Exception as e:
-                print(f"⚠️  Thumbnail generation failed: {e}")
+            except ImportError as ie:
+                print(f"❌ Import error for document_thumbnail: {ie}")
+                import traceback
                 traceback.print_exc()
-                return jsonify({'success': False, 'message': f'Thumbnail generation failed: {str(e)}'}), 500
+                return jsonify({'error': 'Document thumbnail not available'}), 500
+            except Exception as e:
+                print(f"❌ Document thumbnail creation failed: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({'error': f'Thumbnail generation failed: {str(e)}'}), 500
+        
+        # Get template file - handle both persistent storage and memory DB
+        temp_template_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
+        template_from_persistent = persistent_db.get_template(template_id) is not None
+        
+        if template_from_persistent:
+            # Download from Azure Storage
+            if not persistent_db.download_template_file(template_id, template['filename'], temp_template_path):
+                print(f"❌ Failed to download template file from Azure: {template_id}")
+                return jsonify({'success': False, 'message': 'Template file not found in storage'}), 404
+        else:
+            # Template is from memory DB - file should already be in local TEMPLATE_FOLDER
+            local_template_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
+            if not os.path.exists(local_template_path):
+                print(f"❌ Local template file not found: {local_template_path}")
+                return jsonify({'success': False, 'message': 'Template file not found locally'}), 404
+            temp_template_path = local_template_path
+        
+        # Generate thumbnail from the downloaded template
+        try:
+            import pythoncom
+            from docx2pdf import convert
+            import fitz  # PyMuPDF for PDF to image conversion
+            from PIL import Image
+            
+            print(f"🖼️ Generating thumbnail for template: {template_id}")
+            
+            # Convert DOCX to PDF first
+            temp_pdf = os.path.join(Config.OUTPUT_FOLDER, f"{template_id}_temp.pdf")
+            
+            pythoncom.CoInitialize()
+            try:
+                convert(temp_template_path, temp_pdf)
+            finally:
+                pythoncom.CoUninitialize()
+            
+            # Convert first page of PDF to image
+            if os.path.exists(temp_pdf):
+                pdf_document = fitz.open(temp_pdf)
+                first_page = pdf_document[0]
+                # Render at 120 DPI for faster loading
+                pix = first_page.get_pixmap(matrix=fitz.Matrix(120/72, 120/72))
+                
+                # Save as PNG first
+                temp_png = thumbnail_path.replace('.png', '_temp.png')
+                pix.save(temp_png)
+                pdf_document.close()
+                
+                # Optimize with PIL for smaller file size
+                img = Image.open(temp_png)
+                img.save(thumbnail_path, 'PNG', optimize=True, quality=85)
+                
+                # Clean up temp files
+                os.remove(temp_pdf)
+                os.remove(temp_png)
+                
+                # Upload thumbnail to Azure Storage for persistence
+                if storage_manager.upload_thumbnail(template_id, thumbnail_path):
+                    print(f"✅ Thumbnail uploaded to Azure Storage: {template_id}")
+                else:
+                    print(f"⚠️ Failed to upload thumbnail to Azure Storage: {template_id}")
+                
+                # Clean up downloaded template file
+                try:
+                    os.remove(temp_template_path)
+                except:
+                    pass
+                
+                print(f"✅ Thumbnail generated successfully: {template_id}")
+            else:
+                return jsonify({'success': False, 'message': 'PDF conversion failed'}), 500
+                
+        except Exception as e:
+            print(f"⚠️ Thumbnail generation failed: {e}")
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': f'Thumbnail generation failed: {str(e)}'}), 500
         
         # Return the thumbnail image with aggressive caching
         response = send_from_directory(Config.OUTPUT_FOLDER, thumbnail_filename, mimetype='image/png')
@@ -529,18 +991,100 @@ def get_template_thumbnail(template_id):
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# ===== Static/SPA routes =====
+@app.route('/')
+def serve_index():
+    # Serve the built React index.html
+    try:
+        return send_from_directory(frontend_dir, 'index.html')
+    except Exception:
+        return '<h1>Resume Formatter</h1>', 200
+
+@app.route('/manifest.json')
+def serve_manifest():
+    try:
+        return send_from_directory(frontend_dir, 'manifest.json', mimetype='application/json')
+    except Exception:
+        return jsonify({'error': 'manifest not found'}), 404
+
+@app.route('/favicon.ico')
+def serve_favicon():
+    try:
+        return send_from_directory(frontend_dir, 'favicon.ico')
+    except Exception:
+        return '', 204
+
+@app.route('/favicon.svg')
+def serve_favicon_svg():
+    try:
+        return send_from_directory(frontend_dir, 'favicon.svg')
+    except Exception:
+        return '', 204
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files (CSS, JS, etc.)"""
+    try:
+        return send_from_directory(static_dir, filename)
+    except Exception:
+        return '', 404
+
 @app.route('/api/templates/<template_id>', methods=['DELETE'])
 def delete_template(template_id):
-    """Delete template"""
+    """Delete template from both local storage and Azure"""
+    print(f"🗑️ DELETE request received for template: {template_id}")
     try:
-        template = db.get_template(template_id)
-        if template:
-            file_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
-            if os.path.exists(file_path):
+        # Get template info - try persistent storage first, then fallback
+        template = persistent_db.get_template(template_id)
+        if not template:
+            print(f"⚠️ Template not found in persistent storage, trying fallback...")
+            template = db.get_template(template_id)
+        
+        print(f"📋 Template found: {template}")
+        if not template:
+            print(f"❌ Template not found in any database: {template_id}")
+            return jsonify({'success': False, 'message': 'Template not found'}), 404
+        
+        # Delete from local storage
+        file_path = os.path.join(Config.TEMPLATE_FOLDER, template['filename'])
+        if os.path.exists(file_path):
+            try:
                 os.remove(file_path)
+                print(f"✅ Deleted local template file: {file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to delete local file: {e}")
+        
+        # Delete from Azure Storage
+        try:
+            storage_manager.delete_template_file(template_id, template['filename'])
+            print(f"✅ Deleted template from Azure Storage: {template_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete from Azure Storage: {e}")
+        
+        # Delete thumbnail from Azure Storage
+        try:
+            storage_manager.delete_thumbnail(template_id)
+            print(f"✅ Deleted thumbnail from Azure Storage: {template_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete thumbnail from Azure Storage: {e}")
+        
+        # Delete from database (both databases to be safe)
+        try:
             db.delete_template(template_id)
-        return jsonify({'success': True})
+            print(f"✅ Deleted from local database: {template_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete from local database: {e}")
+        
+        try:
+            persistent_db.delete_template(template_id)
+            print(f"✅ Deleted from persistent database: {template_id}")
+        except Exception as e:
+            print(f"⚠️ Failed to delete from persistent database: {e}")
+        
+        print(f"✅ Template deleted successfully: {template_id}")
+        return jsonify({'success': True, 'message': 'Template deleted successfully'})
     except Exception as e:
+        print(f"❌ Error deleting template: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/onlyoffice/status', methods=['GET'])
@@ -548,7 +1092,7 @@ def onlyoffice_status():
     """Check OnlyOffice Document Server status"""
     try:
         import requests
-        response = requests.get('http://localhost:8080/healthcheck', timeout=2)
+        response = requests.get('https://onlyoffice.reddesert-f6724e64.centralus.azurecontainerapps.io/healthcheck', timeout=2)
         if response.status_code == 200:
             return jsonify({
                 'success': True,
@@ -574,7 +1118,99 @@ def onlyoffice_status():
             'message': str(e)
         })
 
+# Add debug logging for all requests
+@app.before_request
+def log_request_path():
+    print(f"📡 Request path: {request.path}")
+
+# Serve React Frontend (for single container deployment)
+@app.route('/')
+def index():
+    """Serve React index.html"""
+    return send_from_directory(app.template_folder, 'index.html')
+
+# Serve logo.png from frontend root
+@app.route('/logo.png')
+def serve_logo():
+    """Serve logo.png from frontend build root"""
+    print(f"🎨 Serving logo from: {app.template_folder}")
+    return send_from_directory(app.template_folder, 'logo.png')
+
+# Serve static files manually (React CSS/JS)
+@app.route('/static/<path:filename>')
+def serve_static_files(filename):
+    """Serve static files from React build"""
+    print(f"🎨 Serving static file: {filename}")
+    print(f"📁 Static folder: {app.static_folder}")
+    return send_from_directory(app.static_folder, filename)
+
+# SPA fallback handled by 404 error handler below
+
+@app.route('/api/cleanup', methods=['POST'])
+def cleanup_old_files():
+    """Cleanup old output files to prevent storage buildup"""
+    try:
+        import time
+        from datetime import datetime, timedelta
+        
+        # Remove files older than 1 hour
+        cutoff_time = time.time() - 3600  # 1 hour
+        deleted_count = 0
+        
+        for filename in os.listdir(Config.OUTPUT_FOLDER):
+            file_path = os.path.join(Config.OUTPUT_FOLDER, filename)
+            if os.path.isfile(file_path):
+                file_mtime = os.path.getmtime(file_path)
+                if file_mtime < cutoff_time:
+                    try:
+                        os.remove(file_path)
+                        deleted_count += 1
+                        print(f"🗑️  Deleted old file: {filename}")
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete {filename}: {e}")
+        
+        return jsonify({
+            'success': True,
+            'deleted_count': deleted_count,
+            'message': f'Cleaned up {deleted_count} old file(s)'
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+def cleanup_on_startup():
+    """Clean up all output files on startup"""
+    try:
+        deleted_count = 0
+        for filename in os.listdir(Config.OUTPUT_FOLDER):
+            file_path = os.path.join(Config.OUTPUT_FOLDER, filename)
+            if os.path.isfile(file_path) and filename.startswith('formatted_'):
+                try:
+                    os.remove(file_path)
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"⚠️  Failed to delete {filename}: {e}")
+        
+        if deleted_count > 0:
+            print(f"🗑️  Startup cleanup: Removed {deleted_count} old output file(s)")
+    except Exception as e:
+        print(f"⚠️  Startup cleanup failed: {e}")
+
+# ===== SPA Fallback (MUST BE LAST ROUTE) =====
+@app.route('/<path:path>')
+def serve_spa(path):
+    """Catch-all route for React SPA - serve index.html for all non-API routes"""
+    if path.startswith('api/'):
+        return '', 404
+    try:
+        return send_from_directory(frontend_dir, 'index.html')
+    except Exception:
+        return '<h1>Resume Formatter</h1><p>Frontend not available</p>', 200
+
 if __name__ == '__main__':
+    # CLEANUP OLD FILES ON STARTUP
+    cleanup_on_startup()
+    
     # PRE-WARM ML MODELS FOR INSTANT FIRST REQUEST 
     try:
         from utils.model_cache import prewarm_models
@@ -594,18 +1230,40 @@ if __name__ == '__main__':
     except:
         local_ip = "localhost"
     
+    # Get port from environment (Azure uses PORT env variable)
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Demo route for new design
+    @app.route('/demo')
+    def demo_page():
+        """Serve the perfect demo HTML page"""
+        return send_from_directory('.', 'demo-perfect.html')
+    
+    # Check Azure Storage connection
+    if os.getenv('AZURE_STORAGE_CONNECTION_STRING'):
+        print("[AZURE] Storage: Connected")
+        print(f"[STORAGE] Manager: {type(storage_manager).__name__}")
+    else:
+        print("[WARN] Azure Storage: Using local fallback")
+
     print("\n" + "="*70)
-    print("🎯 RESUME FORMATTER - BACKEND SERVER")
+    print("RESUME FORMATTER - SINGLE CONTAINER (COST OPTIMIZED)")
     print("="*70)
-    print("✅ API running on http://127.0.0.1:5000")
-    print(f"✅ Network access: http://{local_ip}:5000")
-    print("✅ React frontend: http://localhost:3000")
-    print("✅ OnlyOffice Document Server: http://localhost:8080")
+    print(f"[OK] Server running on http://0.0.0.0:{port}")
+    print(f"[OK] Network access: http://{local_ip}:{port}")
+    print("[OK] Frontend: Served from /")
+    print("[OK] API: Served from /api/*")
+    print(f"[ENV] Environment: {'LOCAL' if Config.IS_LOCAL else 'PRODUCTION'}")
+    print(f"[ENV] OnlyOffice URL: {Config.ONLYOFFICE_URL}")
+    print(f"[ENV] Backend URL: {Config.BACKEND_URL}")
+    print(f"[AZURE] Storage: {'Connected' if os.getenv('AZURE_STORAGE_CONNECTION_STRING') else 'Local Fallback'}")
     print("="*70)
-    print("📝 OnlyOffice Editor Routes:")
-    print("   • /api/onlyoffice/config/<filename>")
-    print("   • /api/onlyoffice/download/<filename>")
-    print("   • /api/onlyoffice/callback/<filename>")
+    print("Main Routes:")
+    print("   - / - React Frontend")
+    print("   - /demo - New Design Demo")
+    print("   - /api/format - Format resumes")
+    print("   - /api/templates - Manage templates")
+    print("   - /api/download/<filename> - Download files")
     print("="*70 + "\n")
-    # CRITICAL: Bind to 0.0.0.0 to accept connections from Docker
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # CRITICAL: Bind to 0.0.0.0 to accept connections from Docker/Azure
+    app.run(debug=False, host='0.0.0.0', port=port)

@@ -3,19 +3,20 @@ import os
 import uuid
 from datetime import datetime
 import requests
+from config import Config
 
 onlyoffice_bp = Blueprint('onlyoffice', __name__)
 
-# Configuration
-ONLYOFFICE_URL = "http://localhost:8080"
+# Configuration - Use dynamic URLs from Config
+ONLYOFFICE_URL = Config.ONLYOFFICE_URL
 DOCUMENT_SERVER_URL = f"{ONLYOFFICE_URL}/web-apps/apps/api/documents/api.js"
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'output')
+OUTPUT_DIR = Config.OUTPUT_FOLDER
 
 # Verify output directory exists
 if not os.path.exists(OUTPUT_DIR):
-    print(f"⚠️  WARNING: Output directory does not exist: {OUTPUT_DIR}")
+    print(f"WARNING: Output directory does not exist: {OUTPUT_DIR}")
 else:
-    print(f"✅ Output directory found: {OUTPUT_DIR}")
+    print(f"Output directory found: {OUTPUT_DIR}")
 
 @onlyoffice_bp.route('/api/onlyoffice/config/<filename>', methods=['GET'])
 def get_onlyoffice_config(filename):

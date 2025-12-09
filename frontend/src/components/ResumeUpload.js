@@ -28,7 +28,7 @@ const ResumeUpload = ({ selectedTemplate, onFormatSuccess }) => {
     });
 
     try {
-      const response = await fetch('http://localhost:5000/api/format', {
+      const response = await fetch('/api/format', {
         method: 'POST',
         body: formData
       });

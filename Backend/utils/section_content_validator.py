@@ -57,17 +57,21 @@ class SectionContentValidator:
         },
         'CERTIFICATIONS': {
             'strong_keywords': [
-                'certified', 'certificate', 'certification', 'license', 'credential',
-                'accredited', 'qualified', 'issued', 'valid', 'expires', 'completion'
+                'certified', 'certificate', 'certification', 'license', 'licensed',
+                'credential', 'accredited', 'qualified', 'exam', 'test', 'passed',
+                'aws certified', 'microsoft certified', 'cisco certified', 'comptia'
             ],
             'patterns': [
                 r'certified\s+\w+',
-                r'\w+\s+certification',
+                r'\w+\s+certified',
                 r'license\s+#?\d+',
-                r'issued:?\s*\d{4}',
-                r'expires:?\s*\d{4}',
+                r'certification\s+in\s+\w+',
             ],
-            'anti_keywords': ['worked', 'managed', 'developed', 'team', 'project']
+            'anti_keywords': [
+                'worked', 'managed', 'developed', 'team', 'project', 'experience',
+                'professional', 'years of experience', 'expertise in', 'skilled in',
+                'background in', 'proficient in', 'adept at', 'hands-on experience'
+            ]
         },
         'PROJECTS': {
             'strong_keywords': [
@@ -84,13 +88,17 @@ class SectionContentValidator:
         'SUMMARY': {
             'strong_keywords': [
                 'years of experience', 'professional', 'seeking', 'motivated',
-                'dedicated', 'passionate', 'expertise in', 'specialized in'
+                'dedicated', 'passionate', 'expertise in', 'specialized in',
+                'experienced', 'skilled in', 'background in', 'proficient in',
+                'adept at', 'hands-on experience', 'professional profile'
             ],
             'patterns': [
                 r'\d+\+?\s*years?\s+of\s+experience',
                 r'seeking\s+(a|an)\s+\w+\s+position',
+                r'experienced\s+\w+\s+(engineer|analyst|developer|manager)',
+                r'professional\s+profile',
             ],
-            'anti_keywords': ['worked at', 'company name', 'employer']
+            'anti_keywords': ['certified', 'certificate', 'license', 'worked at specific company']
         }
     }
     

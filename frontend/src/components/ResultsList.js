@@ -3,7 +3,7 @@ import { FiDownload, FiCheckCircle } from 'react-icons/fi';
 
 const ResultsList = ({ results }) => {
   const handleDownload = (filename) => {
-    window.open(`http://localhost:5000/api/download/${filename}`, '_blank');
+    window.open(`/api/download/${filename}`, '_blank');
   };
 
   if (results.length === 0) return null;

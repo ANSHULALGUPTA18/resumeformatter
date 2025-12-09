@@ -24,13 +24,17 @@ const CAIContactManager = ({ onSelectContacts, selectedContactIds = [], template
 
   const loadContacts = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/cai-contacts');
+      const response = await fetch('/api/cai-contact');
       const data = await response.json();
-      if (data.success) {
-        setContacts(data.contacts);
+      if (data.success && data.contact) {
+        // Convert single contact to array format for compatibility
+        setContacts([{ id: 1, ...data.contact }]);
+      } else {
+        setContacts([]);
       }
     } catch (error) {
       console.error('Error loading contacts:', error);
+      setContacts([]);
     }
   };
   
@@ -38,12 +42,14 @@ const CAIContactManager = ({ onSelectContacts, selectedContactIds = [], template
     if (!templateId) return;
     
     try {
-      const response = await fetch(`http://localhost:5000/api/templates/${templateId}/cai-contacts`);
+      // For now, just load the single global CAI contact
+      // In the future, this could be expanded for template-specific contacts
+      const response = await fetch('/api/cai-contact');
       const data = await response.json();
-      if (data.success && data.contact_ids.length > 0) {
-        // Auto-select template-specific contacts
+      if (data.success && data.contact) {
+        const contact = { id: 1, ...data.contact };
         if (onSelectContacts) {
-          onSelectContacts(data.contacts, data.contact_ids);
+          onSelectContacts([contact], [1]);
         }
       }
     } catch (error) {
@@ -55,11 +61,9 @@ const CAIContactManager = ({ onSelectContacts, selectedContactIds = [], template
     if (!templateId) return;
     
     try {
-      await fetch(`http://localhost:5000/api/templates/${templateId}/cai-contacts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contact_ids: contactIds })
-      });
+      // For now, this is a placeholder since we use a single global CAI contact
+      // The contact is already saved via the main save function
+      console.log(`Template ${templateId} CAI contact mapping: ${contactIds}`);
     } catch (error) {
       console.error('Error saving template contacts:', error);
     }
@@ -89,63 +93,76 @@ const CAIContactManager = ({ onSelectContacts, selectedContactIds = [], template
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    try {
-      const url = editingContact
-        ? `http://localhost:5000/api/cai-contacts/${editingContact.id}`
-        : 'http://localhost:5000/api/cai-contacts';
-      
-      const method = editingContact ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        loadContacts();
-        setShowAddForm(false);
-        setEditingContact(null);
-        setFormData({ name: '', phone: '', email: '' });
-      }
-    } catch (error) {
-      console.error('Error saving contact:', error);
+    // Validate required fields
+    if (!formData.name.trim()) {
+      alert('Name is required!');
+      return;
     }
-  };
-
-  const handleDelete = async (contactId) => {
-    if (!window.confirm('Are you sure you want to delete this contact?')) {
+    if (!formData.email.trim()) {
+      alert('Email is required!');
       return;
     }
     
     try {
-      const response = await fetch(`http://localhost:5000/api/cai-contacts/${contactId}`, {
-        method: 'DELETE'
+      console.log('Saving contact:', formData);
+      
+      // Always use POST to /api/cai-contact (overwrites existing contact)
+      const response = await fetch('/api/cai-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      console.log('Response status:', response.status);
+      const data = await response.json();
+      console.log('Response data:', data);
+      
+      if (data.success) {
+        await loadContacts(); // Reload contacts
+        setShowAddForm(false);
+        setEditingContact(null);
+        setFormData({ name: '', phone: '', email: '' });
+        alert('✅ Contact saved successfully!');
+      } else {
+        console.error('Save failed:', data);
+        alert('❌ Failed to save contact. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      alert('❌ Error saving contact. Please check your connection and try again.');
+    }
+  };
+
+  const handleDelete = async (contactId) => {
+    if (!window.confirm('Are you sure you want to clear this contact?')) {
+      return;
+    }
+    
+    try {
+      // Clear the contact by saving empty data
+      const response = await fetch('/api/cai-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '', phone: '', email: '' })
       });
       
       const data = await response.json();
       
       if (data.success) {
         loadContacts();
+        alert('✅ Contact cleared successfully!');
       }
     } catch (error) {
-      console.error('Error deleting contact:', error);
+      console.error('Error clearing contact:', error);
+      alert('❌ Error clearing contact.');
     }
   };
 
   const handleSetDefault = async (contactId) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/cai-contacts/${contactId}/set-default`, {
-        method: 'POST'
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        loadContacts();
-      }
+      // Since we only have one global contact, it's already the default
+      console.log(`Contact ${contactId} is already the default (single global contact)`);
+      alert('✅ This contact is already set as default!');
     } catch (error) {
       console.error('Error setting default:', error);
     }

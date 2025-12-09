@@ -11,7 +11,8 @@
 Flask==3.0.0                    # Main web framework
 Flask-CORS==4.0.0               # Cross-Origin Resource Sharing support
 Werkzeug==3.0.1                 # WSGI utility library (comes with Flask)
-gunicorn==20.1.0                # Production WSGI server (for Azure deployment)
+MarkupSafe==2.1.3               # Required by Flask/Werkzeug
+# gunicorn==20.1.0                # Production WSGI server (for Azure deployment) - REMOVED: Duplicate
 
 # ============================================================================
 # DOCUMENT PROCESSING - CORE
@@ -36,6 +37,13 @@ torch==2.1.0                    # PyTorch (required by transformers)
 spacy==3.7.2                    # NLP library for text processing
 fuzzywuzzy==0.18.0              # Fuzzy string matching (FAST!)
 python-Levenshtein==0.21.1      # Fast string similarity (for fuzzywuzzy)
+
+# ============================================================================
+# AZURE DEPLOYMENT DEPENDENCIES
+# ============================================================================
+gunicorn==21.2.0                   # WSGI server for production deployment
+azure-storage-blob==12.19.0        # Azure Blob Storage for persistent data
+python-dotenv==1.0.0               # Load environment variables from .env file
 
 # ============================================================================
 # DATA PROCESSING & UTILITIES

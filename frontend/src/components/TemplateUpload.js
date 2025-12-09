@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FiUpload } from 'react-icons/fi';
+import { uploadTemplate } from '../services/api';
 
 const TemplateUpload = ({ onUploadSuccess }) => {
   const [templateName, setTemplateName] = useState('');
@@ -20,11 +21,7 @@ const TemplateUpload = ({ onUploadSuccess }) => {
     formData.append('template_file', file);
 
     try {
-      const response = await fetch('http://localhost:5000/api/templates', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await response.json();
+      const data = await uploadTemplate(formData);
       
       if (data.success) {
         alert('Template uploaded successfully!');
@@ -35,7 +32,8 @@ const TemplateUpload = ({ onUploadSuccess }) => {
         alert(data.message || 'Upload failed');
       }
     } catch (error) {
-      alert('Error uploading template');
+      console.error('Upload error:', error);
+      alert('Error uploading template. Failed to fetch.');
     } finally {
       setLoading(false);
     }
@@ -45,8 +43,8 @@ const TemplateUpload = ({ onUploadSuccess }) => {
     <div className="card">
       <h2><FiUpload /> Upload Resume Template</h2>
       <p className="info-text" style={{fontSize: '0.9em', color: '#666', marginBottom: '10px'}}>
-        ⚠️ <strong>Note:</strong> For best results, use <strong>.pdf</strong> or <strong>.docx</strong> templates. 
-        Old .doc format has limited support.
+        ✅ <strong>Supported formats:</strong> <strong>.pdf</strong>, <strong>.docx</strong>, and <strong>.doc</strong> templates. 
+        Old .doc files will be automatically converted to .docx for better compatibility.
       </p>
       <form onSubmit={handleSubmit}>
         <input
@@ -58,7 +56,7 @@ const TemplateUpload = ({ onUploadSuccess }) => {
         />
         <input
           type="file"
-          accept=".pdf,.docx"
+          accept=".pdf,.docx,.doc"
           onChange={(e) => setFile(e.target.files[0])}
           required
         />

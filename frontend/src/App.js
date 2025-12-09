@@ -1,75 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import WizardStepper from './components/WizardStepper';
-import TemplateSelection from './components/TemplateSelection';
+import TemplateSelectionNew from './components/TemplateSelectionNew';
 import ResumeUploadPhase from './components/ResumeUploadPhase';
 import DownloadPhase from './components/DownloadPhase';
 import './App.css';
 
+// Clear localStorage immediately when the module loads, but preserve certain items
+const savedDarkMode = localStorage.getItem('darkMode');
+const savedFavorites = localStorage.getItem('templateFavorites');
+localStorage.clear();
+if (savedDarkMode) {
+  localStorage.setItem('darkMode', savedDarkMode);
+}
+if (savedFavorites) {
+  localStorage.setItem('templateFavorites', savedFavorites);
+}
+
 function App() {
-  const [currentStep, setCurrentStep] = useState(() => {
-    const saved = localStorage.getItem('currentStep');
-    return saved ? parseInt(saved) : 1;
-  });
+  const [currentStep, setCurrentStep] = useState(1); // Always start from step 1
   const [templates, setTemplates] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState(() => {
-    const saved = localStorage.getItem('selectedTemplate');
-    return saved ? saved : null;
-  });
-  const [results, setResults] = useState(() => {
-    const saved = localStorage.getItem('results');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [selectedTemplate, setSelectedTemplate] = useState(null); // Don't persist template selection
+  const [results, setResults] = useState([]); // Don't persist results
   const [isFormatting, setIsFormatting] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(savedDarkMode ? JSON.parse(savedDarkMode) : false);
 
-  // Load dark mode from localStorage
+  // Ensure fresh start on component mount
   useEffect(() => {
-    const savedDarkMode = localStorage.getItem('darkMode');
-    if (savedDarkMode) {
-      setDarkMode(JSON.parse(savedDarkMode));
-    }
+    // Force reset to step 1 (localStorage already cleared at module load)
+    setCurrentStep(1);
+    setSelectedTemplate(null);
+    setResults([]);
   }, []);
 
-  // Save state to localStorage
-  useEffect(() => {
-    localStorage.setItem('currentStep', currentStep.toString());
-  }, [currentStep]);
+  // No localStorage persistence - always start fresh
 
-  useEffect(() => {
-    if (selectedTemplate) {
-      localStorage.setItem('selectedTemplate', selectedTemplate);
-    }
-  }, [selectedTemplate]);
-
-  useEffect(() => {
-    if (results.length > 0) {
-      localStorage.setItem('results', JSON.stringify(results));
-    }
-  }, [results]);
-
-  // Handle browser back/forward navigation
-  useEffect(() => {
-    const handlePopState = (event) => {
-      if (event.state && event.state.step) {
-        setCurrentStep(event.state.step);
-      }
-    };
-
-    // Push initial state
-    window.history.replaceState({ step: currentStep }, '', window.location.href);
-
-    // Listen for back/forward
-    window.addEventListener('popstate', handlePopState);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, []);
-
-  // Update history when step changes
-  useEffect(() => {
-    window.history.pushState({ step: currentStep }, '', window.location.href);
-  }, [currentStep]);
+  // No browser history navigation - always start fresh
 
   // Toggle dark mode
   const toggleDarkMode = () => {
@@ -80,7 +45,7 @@ function App() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/templates');
+      const response = await fetch('/api/templates');
       const data = await response.json();
       if (data.success) {
         setTemplates(data.templates);
@@ -95,18 +60,40 @@ function App() {
   }, []);
 
   const handleTemplateDelete = async (templateId) => {
-    if (window.confirm('Are you sure you want to delete this template?')) {
-      try {
-        await fetch(`http://localhost:5000/api/templates/${templateId}`, {
-          method: 'DELETE'
-        });
-        fetchTemplates();
+    console.log('🗑️ Starting deletion for template:', templateId);
+    try {
+      const response = await fetch(`/api/templates/${templateId}`, {
+        method: 'DELETE'
+      });
+      
+      console.log('📡 Delete response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('📋 Delete response data:', data);
+      
+      if (data.success) {
+        console.log('✅ Template deleted successfully, refreshing list...');
+        // Refresh templates immediately
+        await fetchTemplates();
         if (selectedTemplate === templateId) {
           setSelectedTemplate(null);
         }
-      } catch (error) {
-        alert('Error deleting template');
+        console.log('✅ Template list refreshed');
+        return { success: true };
+      } else {
+        const errorMsg = 'Error deleting template: ' + (data.message || 'Unknown error');
+        console.error('❌', errorMsg);
+        alert(errorMsg);
+        throw new Error(errorMsg);
       }
+    } catch (error) {
+      console.error('❌ Delete error:', error);
+      alert('Error deleting template: ' + error.message);
+      throw error;
     }
   };
 
@@ -147,57 +134,37 @@ function App() {
       {currentStep !== 3 && (
         <header className="header">
           <div className="header-content">
-            <div className="logo">
-              <span className="logo-icon">✨</span>
-              <h1>Resume Formatter Pro</h1>
-            </div>
-            <div className="header-actions">
-              <p className="tagline">Transform Your Resumes with Professional Templates</p>
-              <button className="dark-mode-toggle" onClick={toggleDarkMode} title={darkMode ? 'Light Mode' : 'Dark Mode'}>
-                {darkMode ? '☀️' : '🌙'}
-              </button>
+            <div className="header-left">
+              <div className="logo-circle">
+                <img src="/logo.png" alt="Resume Formatter Pro" className="logo-image" />
+              </div>
+              <div className="brand-info">
+                <h1 className="brand-title">Resume Formatter Pro</h1>
+                <p className="brand-subtitle">powered by Techgene</p>
+              </div>
             </div>
           </div>
         </header>
       )}
 
       <div className="main-container">
-        {/* Navigation Arrows */}
-        <div className="step-navigation">
-          <button 
-            className="nav-arrow nav-arrow-left"
-            onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-            disabled={currentStep === 1}
-            title="Previous Step"
-          >
-            <span className="arrow-icon">←</span>
-            <span className="arrow-label">Back</span>
-          </button>
-          
-          {currentStep !== 3 && (
+        {/* Step Progress Indicator - Hidden for steps 1 and 3 */}
+        {currentStep === 2 && (
+          <div className="step-navigation">
             <WizardStepper steps={steps} currentStep={currentStep} />
-          )}
-          
-          <button 
-            className="nav-arrow nav-arrow-right"
-            onClick={() => setCurrentStep(Math.min(3, currentStep + 1))}
-            disabled={currentStep === 3 || (currentStep === 1 && !selectedTemplate) || (currentStep === 2 && results.length === 0)}
-            title="Next Step"
-          >
-            <span className="arrow-label">Next</span>
-            <span className="arrow-icon">→</span>
-          </button>
-        </div>
+          </div>
+        )}
 
         <div className="wizard-content">
           {currentStep === 1 && (
-            <TemplateSelection
+            <TemplateSelectionNew
               templates={templates}
               selectedTemplate={selectedTemplate}
               onSelect={handleTemplateSelect}
               onDelete={handleTemplateDelete}
               onUpload={handleTemplateUpload}
               darkMode={darkMode}
+              onBack={null}
             />
           )}
 
@@ -215,6 +182,7 @@ function App() {
           {currentStep === 3 && (
             <DownloadPhase
               results={results}
+              onBack={() => setCurrentStep(2)}
               onStartOver={handleStartOver}
               darkMode={darkMode}
               toggleDarkMode={toggleDarkMode}
@@ -225,7 +193,7 @@ function App() {
 
       {currentStep !== 3 && (
         <footer className="footer">
-          <p>© 2025 Resume Formatter Pro • Powered by AI</p>
+          <p>© 2025 Resume Formatter Pro • Powered by TECHGENE</p>
         </footer>
       )}
     </div>

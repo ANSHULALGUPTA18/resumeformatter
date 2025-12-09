@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './ResumeUploadPhase.css';
-import { getCaiContact, saveCaiContact } from '../services/api';
+import { getCaiContact, saveCaiContact, deleteCaiContact } from '../services/api';
 import CAIContactManager from './CAIContactManager';
 
 const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBack, isFormatting, setIsFormatting }) => {
@@ -11,27 +11,48 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
   const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [showCaiEditor, setShowCaiEditor] = useState(false);
   const [savingCai, setSavingCai] = useState(false);
+  const [editingContactId, setEditingContactId] = useState(null);
   const [fileStatuses, setFileStatuses] = useState({});
   const [showHelp, setShowHelp] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [allContacts, setAllContacts] = useState([]);
 
   const selectedTemplateData = templates.find(t => t.id === selectedTemplate);
 
-  // Load stored CAI contact on mount
+  // Load stored CAI contact and all contacts on mount
   useEffect(() => {
     (async () => {
       try {
         const res = await getCaiContact();
-        if (res?.success && res?.contact) {
-          setCaiContact(res.contact);
+        if (res?.success && res?.contact && (res.contact.name || res.contact.email)) {
+          // Only add to list if contact has actual data
+          const contactWithId = { id: 1, ...res.contact };
+          setAllContacts([contactWithId]);
+          // Don't auto-select, let user choose
         }
       } catch (e) {
-        // silent
+        console.error('Error loading CAI contact:', e);
       }
     })();
   }, []);
+
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const toggleContactSelection = (contact) => {
+    setSelectedContacts(prev => {
+      const isSelected = prev.some(c => c.id === contact.id);
+      if (isSelected) {
+        return prev.filter(c => c.id !== contact.id);
+      } else {
+        return [...prev, contact];
+      }
+    });
+  };
 
   const handleFileSelect = (e) => {
     const newFiles = Array.from(e.target.files);
@@ -97,7 +118,7 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/format', {
+      const response = await fetch('/api/format', {
         method: 'POST',
         body: formData
       });
@@ -122,11 +143,36 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
     setCaiContact(prev => ({ ...prev, [name]: value }));
   };
   const handleSaveCai = async () => {
+    // Validate that contact has at least a name
+    if (!caiContact.name || caiContact.name.trim() === '') {
+      alert('Please enter a contact name');
+      return;
+    }
+
     setSavingCai(true);
     try {
       const res = await saveCaiContact(caiContact);
       if (!res?.success) throw new Error('Save failed');
-      setCaiContact(res.contact || caiContact);
+      
+      // Check if we're editing an existing contact
+      if (editingContactId) {
+        // Update existing contact
+        const updatedContact = { id: editingContactId, ...res.contact };
+        setAllContacts(prev => prev.map(c => c.id === editingContactId ? updatedContact : c));
+        setSelectedContacts(prev => prev.map(c => c.id === editingContactId ? updatedContact : c));
+        setEditingContactId(null);
+      } else {
+        // Add new contact
+        const newContactId = Date.now();
+        const newContact = { id: newContactId, ...res.contact };
+        setAllContacts(prev => [...prev, newContact]);
+        setSelectedContacts(prev => [...prev, newContact]);
+        setSelectedContactIds(prev => [...prev, newContactId]);
+      }
+      
+      // Clear the form for next contact
+      setCaiContact({ name: '', phone: '', email: '' });
+      
       setShowCaiEditor(false);
     } catch (e) {
       alert('Failed to save CAI Contact');
@@ -137,204 +183,173 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
 
   return (
     <div className="resume-upload-phase">
-      {/* CAI Contact Manager - Modern UI */}
-      <CAIContactManager 
-        onSelectContacts={(contacts, contactIds) => {
-          setSelectedContacts(contacts);
-          setSelectedContactIds(contactIds);
-          // Use first contact for backward compatibility
-          if (contacts.length > 0) {
-            setCaiContact({
-              name: contacts[0].name,
-              phone: contacts[0].phone,
-              email: contacts[0].email
-            });
-          }
-        }}
-        selectedContactIds={selectedContactIds}
-        templateId={selectedTemplate}
-      />
-      <div className="phase-header">
-        <h2>📤 Upload Candidate Resumes</h2>
-        <p>Drop your resume files here or click to browse</p>
+      {/* Logo */}
+      <div className="upload-page-logo">
+        <img src="/logo.png" alt="Logo" className="upload-logo-img" />
       </div>
 
-      <div className="selected-template-info">
-        <div className="template-badge">
-          <span className="badge-label">Selected Template:</span>
-          <span className="badge-name">{selectedTemplateData?.name}</span>
-        </div>
-        <button className="change-template-btn" onClick={onBack}>
-          Change Template
-        </button>
-      </div>
+      {/* Back Button */}
+      <button className="back-to-templates-btn" onClick={onBack}>
+        <i className="fas fa-arrow-left"></i>
+      </button>
 
-      {/* AI Smart Detection Banner */}
-      {isProcessing && (
-        <div className="ai-detection-banner">
-          <span className="ai-icon">✨</span>
-          <span>Smart Skill Extraction in progress… we'll analyze and optimize resumes automatically using AI.</span>
-        </div>
-      )}
-
-      {/* Help Tooltip */}
-      <div className="help-section">
-        <button className="help-btn" onClick={() => setShowHelp(!showHelp)} title="Need Assistance?">
-          ℹ️ Help
+      {/* CAI Contacts Dropdown */}
+      <div className="cai-dropdown-wrapper">
+        <button className="cai-dropdown-toggle-new" onClick={toggleDropdown}>
+          <i className="fas fa-users"></i>
+          <span className="dropdown-label">CAI Contacts ({selectedContacts.length})</span>
+          <span className="contact-badge">{selectedContacts.length}</span>
+          <i className={`fas fa-chevron-down dropdown-arrow-icon ${isDropdownOpen ? 'open' : ''}`}></i>
         </button>
-        {showHelp && (
-          <div className="help-tooltip">
-            <h4>📋 Upload Guide</h4>
-            <ul>
-              <li><strong>Formats:</strong> PDF, DOCX</li>
-              <li><strong>Limit:</strong> Up to 100 resumes</li>
-              <li><strong>Processing:</strong> ~30 seconds per resume</li>
-            </ul>
+        
+        {isDropdownOpen && (
+          <div className="cai-dropdown-panel">
+            <div className="dropdown-panel-header">
+              <span>Select Contacts</span>
+              <button className="add-contact-btn-new" onClick={() => { setShowCaiEditor(true); setIsDropdownOpen(false); }}>
+                + Add Contact
+              </button>
+            </div>
+            {allContacts.length > 0 ? (
+              <div className="cai-contacts-list-new">
+                {allContacts.map((contact) => {
+                  const isSelected = selectedContacts.some(c => c.id === contact.id);
+                  return (
+                    <div 
+                      key={contact.id} 
+                      className="cai-contact-item-new"
+                    >
+                      <input 
+                        type="checkbox" 
+                        className="contact-checkbox-new"
+                        checked={isSelected}
+                        onChange={() => toggleContactSelection(contact)}
+                      />
+                      <div className="contact-info-new" onClick={() => toggleContactSelection(contact)}>
+                        <div className="contact-name-new">{contact.name}</div>
+                        <div className="contact-details-new">
+                          {contact.email} • {contact.phone}
+                        </div>
+                      </div>
+                      <div className="contact-actions-new">
+                        <button 
+                          className="contact-edit-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCaiContact({ name: contact.name, phone: contact.phone, email: contact.email });
+                            setEditingContactId(contact.id);
+                            setShowCaiEditor(true);
+                          }}
+                          title="Edit contact"
+                        >
+                          <i className="fas fa-edit"></i>
+                        </button>
+                        <button 
+                          className="contact-delete-btn"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Delete contact "${contact.name}"?`)) {
+                              try {
+                                // Call API to delete contact from backend
+                                await deleteCaiContact();
+                                // Update local state
+                                setAllContacts(prev => prev.filter(c => c.id !== contact.id));
+                                setSelectedContacts(prev => prev.filter(c => c.id !== contact.id));
+                                setSelectedContactIds(prev => prev.filter(id => id !== contact.id));
+                              } catch (err) {
+                                console.error('Failed to delete contact:', err);
+                                alert('Failed to delete contact. Please try again.');
+                              }
+                            }
+                          }}
+                          title="Delete contact"
+                        >
+                          <i className="fas fa-trash"></i>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="no-contacts-message-new">
+                No contacts available. Click "Add Contact" to create one.
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div
-        className={`dropzone ${isDragging ? 'dragging' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => document.getElementById('file-upload').click()}
-      >
-        <div className="dropzone-content">
-          <div className="upload-icons">
-            <span className="file-icon">📄</span>
-            <span className="file-icon">📝</span>
+      {/* Upload Container */}
+      <div className="upload-container-new">
+        <div
+          className={`dropzone-new ${isDragging ? 'dragging' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => document.getElementById('file-upload').click()}
+        >
+          <div className="cloud-icon">
+            <i className="fas fa-cloud-upload-alt"></i>
           </div>
-          <h3>Drag & Drop Resume Files Here</h3>
-          <p>Drop up to 100 resumes here or click to browse</p>
-          <div className="supported-formats">
-            <span className="format-badge">📄 PDF</span>
-            <span className="format-badge">📝 DOCX</span>
-          </div>
+          <p className="dropzone-text-primary">
+            Drag and Drop <span className="highlight-text">Your resume Here</span> or <span className="highlight-text">Upload</span> an existing File
+          </p>
+          <p className="dropzone-text-secondary">
+            Upto 100 resumes you can upload Here
+          </p>
+          <button className="upload-button-new" onClick={(e) => { e.stopPropagation(); document.getElementById('file-upload').click(); }}>
+            Upload Resume
+          </button>
         </div>
-        <input
-          id="file-upload"
-          type="file"
-          multiple
-          accept=".pdf,.docx,.doc"
-          onChange={handleFileSelect}
-          style={{ display: 'none' }}
-        />
       </div>
 
-      {files.length > 0 && (
-        <>
-          {/* Batch Actions Toolbar */}
-          <div className="batch-toolbar">
-            <button className="toolbar-btn" onClick={() => {
-              if (selectedFiles.length === files.length) {
-                setSelectedFiles([]);
-              } else {
-                setSelectedFiles(files.map((_, i) => i));
-              }
-            }}>
-              {selectedFiles.length === files.length ? '☐' : '☑'} Select All
-            </button>
-            <button 
-              className="toolbar-btn" 
-              disabled={selectedFiles.length === 0}
-              onClick={() => {
-                setFiles(prev => prev.filter((_, i) => !selectedFiles.includes(i)));
-                setSelectedFiles([]);
-              }}
-            >
-              🗑️ Remove Selected
-            </button>
-            <div className="toolbar-spacer"></div>
-            <div className="upload-progress-text">
-              Processing {uploadProgress}% complete
-            </div>
-          </div>
+      <input
+        id="file-upload"
+        type="file"
+        multiple
+        accept=".pdf,.docx,.doc"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+      />
 
-          <div className="uploaded-files">
-            <div className="files-header">
-              <h3>📋 Uploaded Files ({files.length})</h3>
-              <button className="clear-all-btn" onClick={() => { setFiles([]); setSelectedFiles([]); }}>
-                Clear All
+      {/* File List */}
+      {files.length > 0 && (
+        <div className="uploaded-files-new">
+          {files.map((file, index) => (
+            <div key={index} className="file-item-new">
+              <i className="far fa-file-alt file-icon-new"></i>
+              <div className="file-name-new">{file.name}</div>
+              <button className="remove-file-btn-new" onClick={() => removeFile(index)}>
+                ×
               </button>
             </div>
-            <div className="files-list">
-              {files.map((file, index) => {
-                const status = fileStatuses[index] || { status: 'ready', message: 'Ready' };
-                const statusIcon = {
-                  'ready': '🟢',
-                  'processing': '🟡',
-                  'success': '✅',
-                  'error': '🔴'
-                }[status.status] || '🟢';
-
-                return (
-                  <div 
-                    key={index} 
-                    className={`file-item ${selectedFiles.includes(index) ? 'selected' : ''}`}
-                    onClick={() => {
-                      if (selectedFiles.includes(index)) {
-                        setSelectedFiles(prev => prev.filter(i => i !== index));
-                      } else {
-                        setSelectedFiles(prev => [...prev, index]);
-                      }
-                    }}
-                  >
-                    <div className="file-checkbox">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedFiles.includes(index)}
-                        onChange={() => {}}
-                      />
-                    </div>
-                    <div className="file-icon">
-                      {file.name.endsWith('.pdf') ? '📄' : '📝'}
-                    </div>
-                    <div className="file-details">
-                      <div className="file-name">{file.name}</div>
-                      <div className="file-meta">
-                        <span className="file-size">{(file.size / 1024).toFixed(2)} KB</span>
-                        <span className="file-type">{file.name.endsWith('.pdf') ? 'PDF' : 'DOCX'}</span>
-                      </div>
-                      <div className="file-status">
-                        <span className="status-icon">{statusIcon}</span>
-                        <span className="status-text">{status.message}</span>
-                      </div>
-                    </div>
-                    <button className="remove-file-btn" onClick={(e) => { e.stopPropagation(); removeFile(index); }}>
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </>
+          ))}
+        </div>
       )}
 
-      <div className="action-buttons">
-        <button className="btn-back" onClick={onBack}>
-          ← Back to Templates
+      {/* Bottom Action Bar */}
+      <div className="bottom-action-bar">
+        <button className="btn-cancel-new" onClick={onBack}>
+          Cancel
         </button>
         <button
-          className={`btn-format ${files.length > 0 ? 'active' : ''}`}
+          className="btn-format-new"
           onClick={handleFormat}
           disabled={isFormatting || files.length === 0}
         >
           {isFormatting ? (
             <>
-              <span className="spinner"></span>
-              Formatting {files.length} resume(s)...
+              <span className="spinner-new"></span>
+              Formatting...
             </>
           ) : (
-            <>
-              ✨ Format {files.length === 0 ? '0 Resumes' : `${files.length} Resume${files.length !== 1 ? 's' : ''}`}
-            </>
+            'Format'
           )}
         </button>
       </div>
 
+      {/* CAI Contact Modal */}
       {showCaiEditor && (
         <div className="modal-overlay" onClick={handleCloseCai}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -362,6 +377,25 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
           </div>
         </div>
       )}
+      
+      {/* CAI Contact Manager Component */}
+      <div style={{ display: 'none' }}>
+        <CAIContactManager 
+          onSelectContacts={(contacts, contactIds) => {
+            setSelectedContacts(contacts);
+            setSelectedContactIds(contactIds);
+            if (contacts.length > 0) {
+              setCaiContact({
+                name: contacts[0].name,
+                phone: contacts[0].phone,
+                email: contacts[0].email
+              });
+            }
+          }}
+          selectedContactIds={selectedContactIds}
+          templateId={selectedTemplate}
+        />
+      </div>
     </div>
   );
 }

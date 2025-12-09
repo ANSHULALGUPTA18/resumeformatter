@@ -63,7 +63,13 @@ def extract_sections(lines):
     
     for line in lines:
         if len(line) < 60 and not line.startswith('•') and not has_contact_info(line):
-            current_section = line.lower().strip()
+            section_name = line.lower().strip()
+            
+            # Merge "Professional Profile" content into employment/experience section
+            if 'professional profile' in section_name:
+                current_section = 'experience'  # Redirect to experience
+            else:
+                current_section = section_name
         elif current_section and line:
             sections[current_section].append(line)
     

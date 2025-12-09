@@ -95,14 +95,14 @@ class SectionDetector:
                 from sentence_transformers import SentenceTransformer
                 # Check if model is already cached
                 if not hasattr(SectionDetector, '_cached_model'):
-                    print("  ⚡ Loading OPTIMIZED ML section detector (all-MiniLM-L6-v2)...")
+                    print("  Loading OPTIMIZED ML section detector (all-MiniLM-L6-v2)...")
                     import time
                     start = time.time()
                     SectionDetector._cached_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-                    print(f"  ✅ ML section detector loaded in {time.time()-start:.2f}s (cached)")
+                    print(f"  ML section detector loaded in {time.time()-start:.2f}s (cached)")
                 self.ml_model = SectionDetector._cached_model
             except Exception as e:
-                print(f"  ⚠️  ML model not available: {e}, using rule-based only")
+                print(f"  WARNING: ML model not available: {e}, using rule-based only")
                 self.use_ml = False
     
     def segment_resume(self, text: str) -> Dict[str, str]:

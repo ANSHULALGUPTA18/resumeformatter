@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Use relative URLs for deployed version (same domain)
+const API_BASE_URL = '/api';
 
 export const getTemplates = async () => {
   const response = await axios.get(`${API_BASE_URL}/templates`);
@@ -39,4 +40,9 @@ export const getCaiContact = async () => {
 export const saveCaiContact = async (contact) => {
   const response = await axios.post(`${API_BASE_URL}/cai-contact`, contact);
   return response.data; // { success, contact }
+};
+
+export const deleteCaiContact = async () => {
+  const response = await axios.delete(`${API_BASE_URL}/cai-contact`);
+  return response.data; // { success, message }
 };

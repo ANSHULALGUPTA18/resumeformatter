@@ -21,7 +21,7 @@ try:
     from utils.style_manager import StyleManager
     from utils.section_detector import SectionDetector
     STYLE_PRESERVATION_ENABLED = True
-    print("✅ Style preservation and section detection enabled")
+    print("[OK] Style preservation and section detection enabled")
 except ImportError:
     STYLE_PRESERVATION_ENABLED = False
     print("⚠️  Style preservation not available")
@@ -602,6 +602,10 @@ class WordFormatter:
             # Check if this is a skills table
             if self._is_skills_table(table):
                 print(f"  📊 Found skills table at index {table_idx}")
+                
+                # CRITICAL: Ensure SKILLS heading exists before the table
+                self._ensure_skills_heading_before_table(doc, table)
+                
                 skills_filled = self._fill_skills_table(table)
                 print(f"  ✅ Filled {skills_filled} skill rows")
                 table_replaced += skills_filled
@@ -675,22 +679,26 @@ class WordFormatter:
             print(f"  ⚠️  Name anchor detection error: {e}")
             self._name_anchor_idx = None
         
-        # PRE-PASS: Remove all SKILLS sections before EMPLOYMENT to prevent left-panel fills
-        print(f"\n🔍 PRE-PASS: Removing any SKILLS sections in CAI CONTACT/left panel only...")
+        # PRE-PASS: Remove SKILLS sections ONLY in CAI CONTACT/left panel area (be conservative)
+        print(f"\n🔍 PRE-PASS: Removing SKILLS sections in CAI CONTACT area only...")
         try:
             emp_idx = self._primary_anchors.get('EMPLOYMENT')
             name_idx = getattr(self, '_name_anchor_idx', None)
             # Limit removal strictly to very early left-panel region (CAI CONTACT), not the main content
-            left_boundary = name_idx if name_idx is not None else 5
+            left_boundary = name_idx if name_idx is not None else 8  # Increased from 5 to 8
             skills_removed = 0
             # Determine scan limit: before EMPLOYMENT but never beyond the left boundary
             scan_limit = min(emp_idx, left_boundary) if emp_idx is not None else left_boundary
+            
             if scan_limit and scan_limit > 0:
-                for idx in range(scan_limit - 1, -1, -1):
+                # Only scan the early CAI CONTACT area, not the entire document
+                for idx in range(scan_limit - 1, -1, -1):  # Reverse order to avoid index issues
                     if idx >= len(doc.paragraphs):
                         continue
                     para = doc.paragraphs[idx]
                     t = (para.text or '').strip().upper()
+                    
+                    # Check if this is a SKILLS heading in the CAI CONTACT area
                     if t in ('SKILLS', 'TECHNICAL SKILLS') or ('SKILLS' in t and len(t) < 30):
                         print(f"  🗑️  Removing SKILLS heading at para {idx} (CAI CONTACT area)")
                         # Clear content after this heading until next section or for ~20 lines
@@ -1512,10 +1520,44 @@ class WordFormatter:
                                 break
                 
                     # Strategy: Place SUMMARY right after the candidate name placeholder
-                    if anchor_idx is not None and anchor_idx >= 10 and anchor_idx < len(doc.paragraphs):
-                        # Name anchor found in main content area (not CAI CONTACT) - increased from 5 to 10
+                    if anchor_idx is not None and anchor_idx >= 8 and anchor_idx < len(doc.paragraphs):
+                        # Name anchor found in main content area (not CAI CONTACT) - reduced from 10 to 8
                         anchor_para = doc.paragraphs[anchor_idx]
-                        print(f"  Inserting SUMMARY after candidate name at paragraph {anchor_idx}")
+                        print(f"  ✅ Inserting SUMMARY after candidate name at paragraph {anchor_idx}")
+                        
+                        # Insert blank line first
+                        blank_para = self._insert_paragraph_after(anchor_para, '')
+                        if blank_para:
+                            anchor_para = blank_para
+                        
+                        # Insert SUMMARY heading
+                        summary_heading = self._insert_paragraph_after(anchor_para, 'SUMMARY')
+                        if summary_heading:
+                            # Format heading
+                            summary_heading.clear()
+                            run = summary_heading.add_run('SUMMARY')
+                            run.bold = True
+                            run.underline = True
+                            run.font.size = Pt(12)
+                            run.font.all_caps = True
+                            summary_heading.paragraph_format.space_before = Pt(12)
+                            summary_heading.paragraph_format.space_after = Pt(6)
+                            
+                            # Insert summary content
+                            if summary_lines:
+                                for line in summary_lines:
+                                    if line.strip():
+                                        bullet_para = self._insert_paragraph_after(summary_heading, f"• {line.strip().lstrip('•–—-*● ')}")
+                                        if bullet_para:
+                                            bullet_para.paragraph_format.space_after = Pt(2)
+                                            summary_heading = bullet_para
+                            elif summary_text:
+                                text_para = self._insert_paragraph_after(summary_heading, summary_text)
+                                if text_para:
+                                    text_para.paragraph_format.space_after = Pt(6)
+                            
+                            self._summary_inserted = True
+                            print(f"    ✅ SUMMARY section inserted after candidate name")
                     else:
                         # Fallback: use paragraph before EMPLOYMENT if name not found
                         emp_idx = self._primary_anchors.get('EMPLOYMENT')
@@ -3458,35 +3500,73 @@ class WordFormatter:
                 if skills and len(skills) > 0:
                     print(f"  ✓ Found SKILLS at paragraph {para_idx}: '{paragraph.text[:50]}'")
                     
-                    # Ensure heading formatting (BOLD, UNDERLINED, CAPITAL)
-                    paragraph.clear()
-                    run = paragraph.add_run('SKILLS')
-                    run.bold = True
-                    run.underline = True  # UNDERLINE
-                    run.font.size = Pt(12)
-                    run.font.all_caps = True  # CAPITAL
-                    paragraph.paragraph_format.space_before = Pt(12)
-                    paragraph.paragraph_format.space_after = Pt(6)
-                    print(f"    ✅ Formatted SKILLS heading: BOLD, UNDERLINED, CAPITAL")
-
-                    # Determine if a table follows this heading
+                    # CRITICAL: Check if a table follows this heading
                     node = paragraph._element.getnext()
                     has_table_next = bool(node is not None and str(getattr(node, 'tag', '')).endswith('tbl'))
-
-                    if not has_table_next:
-                        # No table available → insert bullets
-                        print("    → No skills table after heading; inserting bullet list")
-                        # Remove any raw content under heading first
-                        self._delete_following_bullets(paragraph, max_scan=50)
-                        self._insert_skills_bullets(doc, paragraph, skills)
-                    else:
-                        print("    → Skills table detected; will fill during table pass")
+                    
+                    # Check if the next table is actually a skills table
+                    is_skills_table_next = False
+                    if has_table_next:
+                        # Find the actual table object
+                        for table in doc.tables:
+                            if table._element == node:
+                                is_skills_table_next = self._is_skills_table(table)
+                                break
+                    
+                    if is_skills_table_next:
+                        # SKILLS heading is correctly positioned before skills table
+                        print(f"    ✅ SKILLS heading correctly positioned before skills table")
+                        
+                        # Ensure heading formatting (BOLD, UNDERLINED, CAPITAL)
+                        paragraph.clear()
+                        run = paragraph.add_run('SKILLS')
+                        run.bold = True
+                        run.underline = True  # UNDERLINE
+                        run.font.size = Pt(12)
+                        run.font.all_caps = True  # CAPITAL
+                        paragraph.paragraph_format.space_before = Pt(12)
+                        paragraph.paragraph_format.space_after = Pt(6)
+                        print(f"    ✅ Formatted SKILLS heading: BOLD, UNDERLINED, CAPITAL")
+                        
                         # Remove instructional text between heading and table
                         self._remove_instructional_until_table(paragraph, max_scan=20)
-                    
-                    self._skills_inserted = True
-                    sections_added += 1
-                    continue
+                        
+                        self._skills_inserted = True
+                        sections_added += 1
+                        continue
+                    else:
+                        # SKILLS heading without immediate table - check if we're in CAI CONTACT area
+                        emp_idx = self._primary_anchors.get('EMPLOYMENT')
+                        name_idx = getattr(self, '_name_anchor_idx', None)
+                        left_boundary = name_idx if name_idx is not None else 8
+                        
+                        # Only remove if this is clearly in the CAI CONTACT area (early in document)
+                        if para_idx < left_boundary or (emp_idx and para_idx < emp_idx):
+                            print(f"    ⚠️  SKILLS heading in CAI CONTACT area (no table follows), removing it")
+                            print(f"    💡 Skills table will be handled separately with its own heading")
+                            
+                            # Remove this misplaced heading and any content after it
+                            self._delete_following_bullets(paragraph, max_scan=50)
+                            self._delete_paragraph(paragraph)
+                            
+                            # Don't mark as inserted yet - let the table pass handle it
+                            continue
+                        else:
+                            # This might be a legitimate SKILLS heading in main content - preserve it
+                            print(f"    ✅ SKILLS heading in main content area - preserving for potential table processing")
+                            
+                            # Format the heading properly
+                            paragraph.clear()
+                            run = paragraph.add_run('SKILLS')
+                            run.bold = True
+                            run.underline = True
+                            run.font.size = Pt(12)
+                            run.font.all_caps = True
+                            paragraph.paragraph_format.space_before = Pt(12)
+                            paragraph.paragraph_format.space_after = Pt(6)
+                            
+                            # Don't mark as inserted - let table processing handle the content
+                            continue
                 else:
                     # No skills: remove section heading and trailing content
                     print(f"  ⚠️  SKILLS heading found but resume has no skills; removing section")
@@ -4005,6 +4085,60 @@ class WordFormatter:
             })
         
         return edu_list
+    
+    def _ensure_skills_heading_before_table(self, doc, table):
+        """Ensure a SKILLS heading exists immediately before the skills table"""
+        try:
+            # Find the paragraph immediately before this table
+            table_element = table._element
+            prev_element = table_element.getprevious()
+            
+            # Check if previous element is a paragraph with "SKILLS" heading
+            if prev_element is not None and prev_element.tag.endswith('p'):
+                # Find the paragraph object
+                for para_idx, para in enumerate(doc.paragraphs):
+                    if para._element == prev_element:
+                        para_text = para.text.strip().upper()
+                        if 'SKILLS' in para_text and len(para_text) < 30:
+                            print(f"     ✅ SKILLS heading already exists before table")
+                            return
+                        break
+            
+            # No SKILLS heading found, insert one
+            print(f"     🔧 Inserting SKILLS heading before skills table")
+            
+            # Find the table's position in the document
+            table_para_idx = None
+            for idx, para in enumerate(doc.paragraphs):
+                next_element = para._element.getnext()
+                if next_element is not None and next_element == table_element:
+                    table_para_idx = idx
+                    break
+            
+            if table_para_idx is not None:
+                # Insert a new paragraph before the table
+                anchor_para = doc.paragraphs[table_para_idx]
+                new_para = self._insert_paragraph_before(anchor_para, 'SKILLS')
+                
+                # Format the heading
+                new_para.clear()
+                run = new_para.add_run('SKILLS')
+                run.bold = True
+                run.underline = True
+                run.font.size = Pt(12)
+                run.font.all_caps = True
+                new_para.paragraph_format.space_before = Pt(12)
+                new_para.paragraph_format.space_after = Pt(6)
+                
+                print(f"     ✅ SKILLS heading inserted and formatted")
+                self._skills_inserted = True
+            else:
+                print(f"     ⚠️  Could not find table position to insert heading")
+                
+        except Exception as e:
+            print(f"     ⚠️  Error ensuring SKILLS heading: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _is_skills_table(self, table):
         """Check if table is a skills table by examining headers - FLEXIBLE detection"""
