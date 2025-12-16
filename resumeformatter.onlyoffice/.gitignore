@@ -1,0 +1,87 @@
+# Node / frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/build/
+frontend/.turbo/
+frontend/.parcel-cache/
+frontend/.vite/
+frontend/coverage/
+frontend/node_modules/.cache/
+
+# Python / backend
+Backend/venv/
+Backend/.venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Generated outputs (temporary files only)
+Backend/Output/*.docx
+Backend/Output/*.pdf
+Backend/Static/uploads/*.docx
+Backend/Static/uploads/*.pdf
+Backend/Static/resumes/
+
+# Database files (will be recreated)
+Backend/templates.db
+Backend/*.db
+
+# Test files
+test_*.py
+*_test.py
+
+# Documentation (keep only README.md)
+*.md
+!README.md
+!DEPLOYMENT.md
+
+# Development files
+*.bat
+*.ps1
+*.sh
+check_*.py
+diagnose_*.py
+*.html
+*.msi
+*.pdf
+*.txt
+!requirements.txt
+!requirements_ml.txt
+
+# Common env and IDE
+.env
+.env.local
+.env.*.local
+!.env.example
+QUICK_CREDENTIALS_CARD.txt
+.vscode/
+.idea/
+.DS_Store
+*.log
+.cache/
+
+# Azure deployment
+.azure/
+.deployment
+deploy.sh
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
+. v e n v / 
+ 
+ 
+nul
