@@ -1,7 +1,0 @@
-# ML dependencies for intelligent section mapping
-sentence-transformers==2.2.2
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.21.1
-spacy==3.7.2
-transformers==4.35.0
-torch==2.1.0

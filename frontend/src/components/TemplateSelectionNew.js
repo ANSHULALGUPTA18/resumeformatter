@@ -120,7 +120,7 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
     <div className="template-library">
       {/* Page Header */}
       <div className="page-header">
-        <h1 className="page-title">Choose Your Template</h1>
+        <h1 className="page-title">Choose Resume Templates</h1>
       </div>
 
       {/* Search Section */}
@@ -130,14 +130,11 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
           <input
             type="text"
             className="search-input"
-            placeholder="Search The Template Name Here"
+            placeholder="Search templates by name"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <button className="add-template-btn" onClick={() => setShowUploadModal(true)}>
-          <i className="fas fa-plus"></i> Add New Template
-        </button>
       </div>
 
       {/* Tabs */}
@@ -172,6 +169,12 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
 
             <div className="horizontal-scroll-container" ref={scrollRef}>
               <div className="template-row">
+                {/* Add New Template Card - Always First */}
+                <div className="add-template-card" onClick={() => setShowUploadModal(true)}>
+                  <i className="fas fa-plus add-template-icon"></i>
+                  <div className="add-template-text">Add New Template</div>
+                </div>
+
                 {currentTemplates.map((template) => (
                   <div key={template.id} className="template-card" onClick={() => onSelect(template.id)}>
                     <div className="template-preview">

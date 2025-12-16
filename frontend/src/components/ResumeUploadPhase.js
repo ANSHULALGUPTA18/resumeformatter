@@ -183,17 +183,19 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
 
   return (
     <div className="resume-upload-phase">
-      {/* Logo */}
-      <div className="upload-page-logo">
-        <img src="/logo.png" alt="Logo" className="upload-logo-img" />
+      {/* Navigation Arrows - Below Navbar */}
+      <div className="nav-arrows-container">
+        <button className="nav-arrow-left" onClick={onBack} aria-label="Go back">
+          <i className="fas fa-chevron-left"></i>
+        </button>
+        <button className="nav-arrow-right" onClick={handleFormat} disabled={files.length === 0} aria-label="Next">
+          <i className="fas fa-chevron-right"></i>
+        </button>
       </div>
 
-      {/* Back Button */}
-      <button className="back-to-templates-btn" onClick={onBack}>
-        <i className="fas fa-arrow-left"></i>
-      </button>
-
-      {/* CAI Contacts Dropdown */}
+      {/* Main Content Container */}
+      <div className="upload-content-container">
+        {/* CAI Contacts Dropdown */}
       <div className="cai-dropdown-wrapper">
         <button className="cai-dropdown-toggle-new" onClick={toggleDropdown}>
           <i className="fas fa-users"></i>
@@ -293,10 +295,10 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
             <i className="fas fa-cloud-upload-alt"></i>
           </div>
           <p className="dropzone-text-primary">
-            Drag and Drop <span className="highlight-text">Your resume Here</span> or <span className="highlight-text">Upload</span> an existing File
+            Drag or Drop <span className="highlight-text">Your Resume Here</span> or <span className="highlight-text">Upload</span> an existing file
           </p>
           <p className="dropzone-text-secondary">
-            Upto 100 resumes you can upload Here
+            Upto 10 resumes you can upload here
           </p>
           <button className="upload-button-new" onClick={(e) => { e.stopPropagation(); document.getElementById('file-upload').click(); }}>
             Upload Resume
@@ -327,6 +329,7 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
           ))}
         </div>
       )}
+      </div>
 
       {/* Bottom Action Bar */}
       <div className="bottom-action-bar">

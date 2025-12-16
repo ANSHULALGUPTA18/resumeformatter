@@ -275,57 +275,56 @@ const DownloadPhase = ({ results, onBack, onStartOver, darkMode, toggleDarkMode 
 
   return (
     <div className="download-phase-v2">
-      {/* Status Bar with Back Button and Tabs */}
-      <div className={`status-bar ${!headerVisible ? 'hidden' : ''}`}>
-        <button className="back-button-header" onClick={onBack} aria-label="Go back">
-          <i className="fas fa-arrow-left"></i>
-        </button>
-        <div className="tabs-section">
-          <span className="formatted-label">Formatted Resumes:</span>
-          <div className="file-tabs-wrapper">
-            <div className="file-tabs-container">
-              {results.map((result, index) => (
-                <div
-                  key={index}
-                  className={`file-tab-pill ${selectedPreview?.filename === result.filename ? 'active' : ''}`}
-                >
-                  <span 
-                    className="tab-pill-text"
-                    onClick={() => handlePreviewClick(result)}
-                  >
-                    {result.name || result.filename || `Resume_${index + 1}`}
-                  </span>
-                  <button
-                    className="tab-download-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDownload(result);
-                    }}
-                    title="Download"
-                  >
-                    <i className="fas fa-download"></i>
-                  </button>
-                </div>
-              ))}
+      {/* Navbar - Same as Screen 1 and 2 */}
+      <div className="download-navbar">
+        <div className="navbar-content">
+          <div className="navbar-left">
+            <div className="logo-circle">
+              <img src="/Button (1).png" alt="Resume Formatter Pro" className="logo-image" />
+            </div>
+            <div className="brand-info">
+              <h1 className="brand-title">Resume Formatter Pro</h1>
             </div>
           </div>
-          <button className="format-btn" onClick={onStartOver}>
-            Format
-          </button>
         </div>
+      </div>
+
+      {/* Resume Tabs Row - Below Navbar */}
+      <div className="resume-tabs-row">
+        <button className="back-button-circular" onClick={onBack} aria-label="Go back">
+          <i className="fas fa-chevron-left"></i>
+        </button>
+
+        <div className="tabs-container">
+          {results.map((result, index) => (
+            <button
+              key={index}
+              className={`resume-tab ${selectedPreview?.filename === result.filename ? 'active' : ''}`}
+              onClick={() => handlePreviewClick(result)}
+            >
+              Resume_{index + 1}
+            </button>
+          ))}
+        </div>
+
+        <button className="format-btn-new" onClick={onStartOver}>
+          Format
+        </button>
       </div>
 
       {/* Main Content Area */}
       <div className="main-content-new">
         {!selectedPreview ? (
-          /* Success Card */
-          <div className="success-card-container">
-            <div className="success-card">
-              <div className="success-icon-circle">
-                <i className="fas fa-check"></i>
+          /* Success Panel */
+          <div className="success-panel-container">
+            <div className="success-panel">
+              <div className="success-content">
+                <div className="success-icon-circle">
+                  <i className="fas fa-check"></i>
+                </div>
+                <h1 className="success-title">Your resumes are ready!</h1>
+                <p className="success-subtitle">Click tabs above to view or download your formatted resumes</p>
               </div>
-              <h1 className="success-title">Your resumes are ready!</h1>
-              <p className="success-subtitle">Click tabs above to view or download your formatted resumes</p>
             </div>
           </div>
         ) : (
