@@ -43,8 +43,9 @@ const TemplateUpload = ({ onUploadSuccess }) => {
     <div className="card">
       <h2><FiUpload /> Upload Resume Template</h2>
       <p className="info-text" style={{fontSize: '0.9em', color: '#666', marginBottom: '10px'}}>
-        ✅ <strong>Supported formats:</strong> <strong>.pdf</strong>, <strong>.docx</strong>, and <strong>.doc</strong> templates. 
-        Old .doc files will be automatically converted to .docx for better compatibility.
+        ✅ <strong>Supported formats:</strong> <strong>.pdf</strong>, <strong>.docx</strong> (recommended), <strong>.doc</strong>, <strong>.odt</strong>, and <strong>.rtf</strong>.
+        <br />
+        <span style={{fontSize: '0.85em', color: '#888'}}>Note: .doc, .odt, and .rtf files require LibreOffice for conversion. For best results, use .docx format.</span>
       </p>
       <form onSubmit={handleSubmit}>
         <input
@@ -56,7 +57,7 @@ const TemplateUpload = ({ onUploadSuccess }) => {
         />
         <input
           type="file"
-          accept=".pdf,.docx,.doc"
+          accept=".pdf,.docx,.doc,.odt,.rtf"
           onChange={(e) => setFile(e.target.files[0])}
           required
         />

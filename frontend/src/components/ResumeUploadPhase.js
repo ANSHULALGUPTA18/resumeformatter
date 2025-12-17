@@ -408,7 +408,7 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
         id="file-upload"
         type="file"
         multiple
-        accept=".pdf,.docx,.doc"
+        accept=".pdf,.docx,.doc,.odt,.rtf"
         onChange={handleFileSelect}
         style={{ display: 'none' }}
       />

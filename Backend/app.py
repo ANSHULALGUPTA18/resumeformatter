@@ -380,7 +380,8 @@ def upload_template():
         final_file_type = file_type
 
         if needs_conversion(filename):
-            print(f"🔄 Attempting to convert .doc to .docx...")
+            file_ext = file_type.upper()
+            print(f"🔄 Attempting to convert {file_ext} to .docx...")
             converted_path = convert_doc_to_docx(file_path)
 
             if converted_path and os.path.exists(converted_path):
@@ -400,15 +401,27 @@ def upload_template():
                 except:
                     pass
             else:
-                print(f"❌ .doc conversion not available - LibreOffice/Pandoc not installed")
+                file_ext = file_type.upper()
+                print(f"❌ {file_ext} conversion not available - LibreOffice/Pandoc not installed")
                 # Clean up the uploaded file
                 try:
                     os.remove(file_path)
                 except:
                     pass
+
+                # Provide specific error message based on file type
+                if file_type == 'doc':
+                    error_msg = 'Cannot process .doc files. Please save as .docx format in Microsoft Word (File → Save As → Word Document (.docx)) and try again.'
+                elif file_type == 'odt':
+                    error_msg = 'Cannot process .odt files. Please save as .docx format in LibreOffice (File → Save As → Microsoft Word (.docx)) and try again.'
+                elif file_type == 'rtf':
+                    error_msg = 'Cannot process .rtf files. Please open in Word/LibreOffice and save as .docx format and try again.'
+                else:
+                    error_msg = f'Cannot process .{file_type} files. Please convert to .docx format and try again.'
+
                 return jsonify({
                     'success': False,
-                    'message': 'Cannot process .doc files. Please save as .docx format in Microsoft Word (File → Save As → Word Document (.docx)) and try again.'
+                    'message': error_msg
                 }), 400
         
         # Analyze template with advanced analyzer

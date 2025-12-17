@@ -227,6 +227,37 @@
   color: #9ca3af;
 }
 
+/* Inline Empty State - Shows next to Add Template button */
+.empty-state-inline {
+  text-align: center;
+  padding: 40px 30px;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 400px;
+}
+
+.empty-state-inline i {
+  font-size: 48px;
+  color: #d1d5db;
+  margin-bottom: 16px;
+}
+
+.empty-state-inline h3 {
+  font-size: 18px;
+  color: #374151;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.empty-state-inline p {
+  font-size: 14px;
+  color: #9ca3af;
+  margin: 0;
+}
+
 /* Scroll Wrapper */
 .scroll-wrapper {
   position: relative;

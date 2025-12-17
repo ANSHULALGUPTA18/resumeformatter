@@ -57,7 +57,7 @@ const ResumeUpload = ({ selectedTemplate, onFormatSuccess }) => {
         <form onSubmit={handleSubmit}>
           <input
             type="file"
-            accept=".pdf,.doc,.docx"
+            accept=".pdf,.doc,.docx,.odt,.rtf"
             multiple
             onChange={(e) => setFiles(Array.from(e.target.files))}
             required

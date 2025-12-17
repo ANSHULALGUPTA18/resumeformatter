@@ -10,7 +10,7 @@ class Config:
 
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 
-    ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx'}
+    ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'odt', 'rtf'}
 
     # OnlyOffice settings - Auto-detect environment
     # Check if running locally or in production

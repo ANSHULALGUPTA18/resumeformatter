@@ -114,11 +114,11 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
     const fileName = droppedFile.name.toLowerCase();
-    if (droppedFile && (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf'))) {
+    if (droppedFile && (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf') || fileName.endsWith('.odt') || fileName.endsWith('.rtf'))) {
       setFile(droppedFile);
       setShowUploadModal(true);
     } else {
-      alert('Please drop a valid template file (.docx, .doc, or .pdf)');
+      alert('Please drop a valid template file (.docx, .doc, .pdf, .odt, or .rtf)');
     }
   };
 
@@ -196,27 +196,29 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
 
       {/* Templates Container */}
       <div className="templates-container">
-        {currentTemplates.length === 0 ? (
-          <div className="empty-state">
-            <i className="far fa-heart"></i>
-            <h3>{activeTab === 'favorites' ? 'No favorites yet' : 'No templates found'}</h3>
-            <p>{activeTab === 'favorites' ? 'Click the star icon on any template to add it here' : 'Try adjusting your search'}</p>
-          </div>
-        ) : (
-          <div className="scroll-wrapper">
+        <div className="scroll-wrapper">
+          {currentTemplates.length > 0 && (
             <button className="scroll-btn scroll-btn-left" onClick={scrollLeft} aria-label="Scroll left">
               <i className="fas fa-chevron-left"></i>
             </button>
+          )}
 
-            <div className="horizontal-scroll-container" ref={scrollRef}>
-              <div className="template-row">
-                {/* Add New Template Card - Always First */}
-                <div className="add-template-card" onClick={() => setShowUploadModal(true)}>
-                  <i className="fas fa-plus add-template-icon"></i>
-                  <div className="add-template-text">Add New Template</div>
+          <div className="horizontal-scroll-container" ref={scrollRef}>
+            <div className="template-row">
+              {/* Add New Template Card - Always First and Always Visible */}
+              <div className="add-template-card" onClick={() => setShowUploadModal(true)}>
+                <i className="fas fa-plus add-template-icon"></i>
+                <div className="add-template-text">Add New Template</div>
+              </div>
+
+              {currentTemplates.length === 0 ? (
+                <div className="empty-state-inline">
+                  <i className="far fa-heart"></i>
+                  <h3>{activeTab === 'favorites' ? 'No favorites yet' : 'No templates found'}</h3>
+                  <p>{activeTab === 'favorites' ? 'Click the star icon on any template to add it here' : searchQuery ? 'Try adjusting your search' : 'Click "Add New Template" to get started'}</p>
                 </div>
-
-                {currentTemplates.map((template) => (
+              ) : (
+                currentTemplates.map((template) => (
                   <div key={template.id} className="template-card" onClick={() => onSelect(template.id)}>
                     <div className="template-preview">
                       <img
@@ -308,15 +310,17 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                       <i className="fas fa-trash-alt"></i>
                     </button>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </div>
+          </div>
 
+          {currentTemplates.length > 0 && (
             <button className="scroll-btn scroll-btn-right" onClick={scrollRight} aria-label="Scroll right">
               <i className="fas fa-chevron-right"></i>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Upload Modal */}
@@ -335,11 +339,11 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                   </div>
                   <p className="upload-text">Drag and drop your template files here</p>
                   <p className="upload-hint" style={{fontSize: '13px', color: '#9ca3af', marginTop: '8px'}}>
-                    Supports: <strong>.DOCX, .DOC, .PDF</strong> • DOC files auto-convert to DOCX
+                    Supports: <strong>.DOCX, .DOC, .PDF, .ODT, .RTF</strong> • ODT/RTF/DOC files auto-convert to DOCX
                   </p>
                   <input
                     type="file"
-                    accept=".docx,.doc,.pdf"
+                    accept=".docx,.doc,.pdf,.odt,.rtf"
                     onChange={(e) => setFile(e.target.files[0])}
                     required
                     id="file-input-new"
