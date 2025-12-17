@@ -150,7 +150,7 @@ function App() {
           <div className="header-content">
             <div className="header-left">
               <div className="logo-circle">
-                <img src="/Button (1).png" alt="Resume Formatter Pro" className="logo-image" />
+                <img src="/logo.png" alt="Resume Formatter Pro" className="logo-image" />
               </div>
               <div className="brand-info">
                 <h1 className="brand-title">Resume Formatter Pro</h1>

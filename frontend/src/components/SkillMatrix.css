@@ -1,0 +1,228 @@
+/* Skill Matrix Container */
+.skill-matrix-container {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  animation: slideIn 0.3s ease-out;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Custom Scrollbar for Skill Matrix */
+.skill-matrix-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.skill-matrix-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.skill-matrix-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.skill-matrix-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.skill-matrix-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #f3f4f6;
+}
+
+.skill-matrix-header i {
+  font-size: 20px;
+  color: #3b82f6;
+}
+
+.skill-matrix-header h3 {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.skill-count {
+  background: #3b82f6;
+  color: white;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Skill Grid */
+.skill-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* Skill Item */
+.skill-item {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  transition: all 0.2s ease;
+}
+
+.skill-item.selected {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.skill-item:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+
+.skill-item.selected:hover {
+  border-color: #2563eb;
+}
+
+/* Checkbox Wrapper */
+.skill-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.skill-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
+
+.skill-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Skill Level Selector */
+.skill-level-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.level-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.level-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #cbd5e1;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.level-dot:hover {
+  border-color: #3b82f6;
+  transform: scale(1.15);
+}
+
+.level-dot.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-color: #2563eb;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.level-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  min-width: 70px;
+  text-align: right;
+}
+
+/* Footer */
+.skill-matrix-footer {
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 2px solid #f3f4f6;
+}
+
+.select-all-btn,
+.deselect-all-btn {
+  flex: 1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.select-all-btn {
+  background: #3b82f6;
+  color: white;
+}
+
+.select-all-btn:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.deselect-all-btn {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.deselect-all-btn:hover {
+  background: #e5e7eb;
+  transform: translateY(-1px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .skill-matrix-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skill-matrix-footer {
+    flex-direction: column;
+  }
+}

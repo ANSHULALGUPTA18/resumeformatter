@@ -11,6 +11,9 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
   const [activeTab, setActiveTab] = useState('available');
   const scrollRef = useRef(null);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [showEditMenu, setShowEditMenu] = useState(null);
+  const [renamingTemplate, setRenamingTemplate] = useState(null);
+  const [newTemplateName, setNewTemplateName] = useState('');
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -119,6 +122,41 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
     }
   };
 
+  const handleRename = async (e) => {
+    e.preventDefault();
+    if (!newTemplateName.trim()) {
+      alert('Please enter a template name');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/templates/${renamingTemplate.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newTemplateName.trim() }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Rename failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        alert('Template renamed successfully!');
+        setRenamingTemplate(null);
+        setNewTemplateName('');
+        onUpload(); // Refresh templates
+      } else {
+        alert(data.message || 'Rename failed');
+      }
+    } catch (error) {
+      console.error('Rename error:', error);
+      alert(`Error renaming template: ${error.message}`);
+    }
+  };
+
   return (
     <div className="template-library">
       {/* Page Header */}
@@ -205,16 +243,45 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                     >
                       <i className="fas fa-star"></i>
                     </button>
-                    <button
-                      className="edit-btn-new"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTemplate(template);
-                      }}
-                      title="Edit template"
-                    >
-                      <i className="fas fa-edit"></i>
-                    </button>
+                    <div className="edit-menu-container">
+                      <button
+                        className="edit-btn-new"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowEditMenu(showEditMenu === template.id ? null : template.id);
+                        }}
+                        title="Edit options"
+                      >
+                        <i className="fas fa-edit"></i>
+                      </button>
+                      {showEditMenu === template.id && (
+                        <div className="edit-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="edit-menu-item"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNewTemplateName(template.name);
+                              setRenamingTemplate(template);
+                              setShowEditMenu(null);
+                            }}
+                          >
+                            <i className="fas fa-i-cursor"></i>
+                            <span>Edit Name</span>
+                          </button>
+                          <button
+                            className="edit-menu-item"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTemplate(template);
+                              setShowEditMenu(null);
+                            }}
+                          >
+                            <i className="fas fa-file-edit"></i>
+                            <span>Edit Template</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       className="delete-btn-new"
                       onClick={async (e) => {
@@ -309,6 +376,41 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                 </button>
                 <button type="submit" className="btn-format-new" disabled={uploading || !file}>
                   {uploading ? 'Uploading...' : 'Upload Template'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Modal */}
+      {renamingTemplate && (
+        <div className="modal-overlay-new" onClick={() => setRenamingTemplate(null)}>
+          <div className="modal-content-new rename-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-new">
+              <h3>✏️ Rename Template</h3>
+              <button className="close-btn-new" onClick={() => setRenamingTemplate(null)}>×</button>
+            </div>
+            <form onSubmit={handleRename} className="upload-form-new">
+              <div className="form-group-new">
+                <label htmlFor="template-name" className="form-label">Template Name</label>
+                <input
+                  type="text"
+                  id="template-name"
+                  className="text-input-new"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder="Enter new template name"
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="form-actions-new">
+                <button type="button" className="btn-cancel-new" onClick={() => setRenamingTemplate(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-format-new">
+                  Save Name
                 </button>
               </div>
             </form>

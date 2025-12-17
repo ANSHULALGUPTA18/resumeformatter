@@ -596,24 +596,45 @@ class WordFormatter:
         print(f"\n📝 Created {len(replacements)} replacement mappings")
         
         # CRITICAL: Process skills tables in-place based on table headers (respect template order)
+        # DO NOT MOVE OR RECREATE TABLES - FILL IN ORIGINAL POSITION ONLY
         table_replaced = 0
         print(f"\n🔍 STEP 1: Scanning {len(doc.tables)} tables...")
+
+        # First, log the position of all tables to ensure we don't move them
+        table_positions = {}
+        for table_idx, table in enumerate(doc.tables):
+            # Find which paragraph this table comes after
+            table_element = table._element
+            prev_para_text = "START"
+            for para_idx, para in enumerate(doc.paragraphs):
+                next_element = para._element.getnext()
+                if next_element is not None and next_element == table_element:
+                    prev_para_text = para.text.strip()[:50] if para.text.strip() else f"Para {para_idx}"
+                    break
+            table_positions[table_idx] = prev_para_text
+            print(f"  📍 Table {table_idx} position: after '{prev_para_text}'")
+
+        # Now process skill tables IN-PLACE without moving them
         for table_idx, table in enumerate(doc.tables):
             # Check if this is a skills table
             if self._is_skills_table(table):
-                print(f"  📊 Found skills table at index {table_idx}")
-                
-                # CRITICAL: Ensure SKILLS heading exists before the table
+                print(f"\n  📊 Found skills table at index {table_idx} (after '{table_positions[table_idx]}')")
+                print(f"     🔒 Will fill IN-PLACE without moving")
+
+                # CRITICAL: Ensure SKILLS heading exists before the table (without moving the table)
                 self._ensure_skills_heading_before_table(doc, table)
-                
+
                 skills_filled = self._fill_skills_table(table)
-                print(f"  ✅ Filled {skills_filled} skill rows")
+                print(f"  ✅ Filled {skills_filled} skill rows IN ORIGINAL POSITION")
                 table_replaced += skills_filled
                 # Mark as inserted if we actually filled rows
                 if skills_filled > 0:
                     self._skills_inserted = True
-        
-        print(f"\n✓ Processed {table_replaced} table entries")
+
+                # Verify table is still in same position
+                print(f"     ✓ Table remains after '{table_positions[table_idx]}'")
+
+        print(f"\n✓ Processed {table_replaced} table entries (all filled in original positions)")
         
         # STEP 2: Replace in all paragraphs
         replaced_count = 0
@@ -4087,12 +4108,15 @@ class WordFormatter:
         return edu_list
     
     def _ensure_skills_heading_before_table(self, doc, table):
-        """Ensure a SKILLS heading exists immediately before the skills table"""
+        """
+        Ensure a SKILLS heading exists immediately before the skills table
+        IMPORTANT: This function inserts a heading BEFORE the table without moving the table itself
+        """
         try:
             # Find the paragraph immediately before this table
             table_element = table._element
             prev_element = table_element.getprevious()
-            
+
             # Check if previous element is a paragraph with "SKILLS" heading
             if prev_element is not None and prev_element.tag.endswith('p'):
                 # Find the paragraph object
@@ -4100,13 +4124,13 @@ class WordFormatter:
                     if para._element == prev_element:
                         para_text = para.text.strip().upper()
                         if 'SKILLS' in para_text and len(para_text) < 30:
-                            print(f"     ✅ SKILLS heading already exists before table")
+                            print(f"     ✅ SKILLS heading already exists before table (table position unchanged)")
                             return
                         break
-            
-            # No SKILLS heading found, insert one
-            print(f"     🔧 Inserting SKILLS heading before skills table")
-            
+
+            # No SKILLS heading found, insert one BEFORE the table (without moving the table)
+            print(f"     🔧 Inserting SKILLS heading before skills table (table will stay in place)")
+
             # Find the table's position in the document
             table_para_idx = None
             for idx, para in enumerate(doc.paragraphs):
@@ -4114,12 +4138,12 @@ class WordFormatter:
                 if next_element is not None and next_element == table_element:
                     table_para_idx = idx
                     break
-            
+
             if table_para_idx is not None:
-                # Insert a new paragraph before the table
+                # Insert a new paragraph before the table (table remains in its original position)
                 anchor_para = doc.paragraphs[table_para_idx]
                 new_para = self._insert_paragraph_before(anchor_para, 'SKILLS')
-                
+
                 # Format the heading
                 new_para.clear()
                 run = new_para.add_run('SKILLS')
@@ -4129,12 +4153,12 @@ class WordFormatter:
                 run.font.all_caps = True
                 new_para.paragraph_format.space_before = Pt(12)
                 new_para.paragraph_format.space_after = Pt(6)
-                
-                print(f"     ✅ SKILLS heading inserted and formatted")
+
+                print(f"     ✅ SKILLS heading inserted (table position preserved)")
                 self._skills_inserted = True
             else:
                 print(f"     ⚠️  Could not find table position to insert heading")
-                
+
         except Exception as e:
             print(f"     ⚠️  Error ensuring SKILLS heading: {e}")
             import traceback
@@ -4265,11 +4289,53 @@ class WordFormatter:
         elif skill_col is None:
             print(f"     ⚠️  No skill column found and table has {len(table.columns)} columns")
             return 0
-        
-        # Get comprehensive skills with detailed experience mapping
-        skills_data = self._extract_skills_with_details()
-        
-        print(f"     📊 Enhanced skills extraction complete: {len(skills_data) if skills_data else 0} skills with detailed experience data")
+
+        # PRIORITY 1: Check if user selected skills from Skill Matrix (from frontend)
+        selected_skills = self.resume_data.get('selected_skills')
+        skills_data = None
+
+        if selected_skills and isinstance(selected_skills, list) and len(selected_skills) > 0:
+            print(f"     ✨ Using user-selected skills from Skill Matrix: {len(selected_skills)} skills")
+
+            # Convert frontend skill data to format needed by table
+            # Frontend format: [{"name": "Python", "level": 4}, ...]
+            # Table format: [{"skill": "Python", "years": "5-7 years", "last_used": "Current"}, ...]
+
+            # Map skill levels (1-5) to years of experience
+            level_to_years = {
+                1: "1 year",
+                2: "2 years",
+                3: "3-4 years",
+                4: "5-7 years",
+                5: "8+ years"
+            }
+
+            skills_data = []
+            for skill_item in selected_skills:
+                skill_name = skill_item.get('name', '')
+                skill_level = skill_item.get('level', 3)  # Default to Intermediate
+
+                if skill_name:
+                    skills_data.append({
+                        'skill': skill_name,
+                        'years': level_to_years.get(skill_level, "3-4 years"),
+                        'last_used': 'Current',  # User-selected skills are assumed current
+                        'total_experience': skill_level  # For sorting
+                    })
+
+            # Show first few skills for logging
+            for skill in skills_data[:3]:
+                print(f"        ✓ {skill['skill']}: {skill['years']}")
+            if len(skills_data) > 3:
+                print(f"        ... and {len(skills_data) - 3} more")
+
+        # PRIORITY 2: If no user-selected skills, extract from resume
+        if not skills_data:
+            print(f"     🔍 No user-selected skills, extracting from resume...")
+            # Get comprehensive skills with detailed experience mapping
+            skills_data = self._extract_skills_with_details()
+
+            print(f"     📊 Enhanced skills extraction complete: {len(skills_data) if skills_data else 0} skills with detailed experience data")
         
         if not skills_data or len(skills_data) == 0:
             print(f"     ⚠️  No comprehensive skills data found, trying fallback extraction...")

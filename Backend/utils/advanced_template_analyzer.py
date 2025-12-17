@@ -392,24 +392,91 @@ class TemplateAnalyzer:
         return None
     
     def _analyze_docx_tables(self, doc):
-        """Analyze tables in DOCX"""
+        """Analyze tables in DOCX and detect skill tables"""
         tables_data = []
         for i, table in enumerate(doc.tables):
             table_data = {
                 'index': i,
                 'rows': len(table.rows),
                 'cols': len(table.columns),
-                'cells': []
+                'cells': [],
+                'is_skill_table': False,
+                'skill_categories': []
             }
-            
+
             for row in table.rows:
                 row_data = []
                 for cell in row.cells:
                     row_data.append(cell.text.strip())
                 table_data['cells'].append(row_data)
-            
+
+            # Detect if this is a skills table
+            skill_keywords = ['skill', 'competenc', 'proficienc', 'technolog', 'expertise', 'ability']
+            table_text_lower = ' '.join([' '.join(row) for row in table_data['cells']]).lower()
+
+            if any(keyword in table_text_lower for keyword in skill_keywords):
+                table_data['is_skill_table'] = True
+                # Extract skill categories from first column or first row
+                skill_categories = []
+
+                # Header patterns to skip (more comprehensive)
+                header_patterns = [
+                    'skill', 'proficienc', 'level', 'rating', 'category',
+                    'year', 'month', 'last', 'used', 'experience', 'exp',
+                    'name', 'type', 'description', 'note'
+                ]
+
+                # Try extracting from first column (vertical layout) - SKIP FIRST ROW (headers)
+                if len(table_data['cells']) > 1:  # Need at least 2 rows (header + data)
+                    for row_idx, row in enumerate(table_data['cells']):
+                        # Skip first row (headers)
+                        if row_idx == 0:
+                            continue
+
+                        if row and row[0]:
+                            category = row[0].strip()
+                            # Skip if empty or matches header pattern
+                            if category and not any(h in category.lower() for h in header_patterns):
+                                if 2 < len(category) < 50:  # Reasonable length for a skill name
+                                    skill_categories.append(category)
+
+                # If no skills found in column, try first row (horizontal layout) - SKIP FIRST COLUMN
+                if not skill_categories and table_data['cells'] and len(table_data['cells'][0]) > 1:
+                    for col_idx, cell in enumerate(table_data['cells'][0]):
+                        # Skip first column (row header)
+                        if col_idx == 0:
+                            continue
+
+                        if cell and cell.strip():
+                            category = cell.strip()
+                            # Skip if matches header pattern
+                            if not any(h in category.lower() for h in header_patterns):
+                                if 2 < len(category) < 50:
+                                    skill_categories.append(category)
+
+                # If no skills extracted but table is a skill table, provide default skills
+                if len(skill_categories) == 0:
+                    print(f"⚠️ Skill table detected but empty - using default skills list")
+                    # Default skills list for common technical/professional skills
+                    skill_categories = [
+                        'Python', 'JavaScript', 'Java', 'C++', 'C#', 'SQL', 'HTML/CSS',
+                        'React', 'Angular', 'Node.js', 'Django', 'Flask', 'Spring Boot',
+                        'Git', 'Docker', 'Kubernetes', 'AWS', 'Azure', 'Google Cloud',
+                        'MongoDB', 'PostgreSQL', 'MySQL', 'Redis',
+                        'Project Management', 'Agile/Scrum', 'Team Leadership',
+                        'Communication', 'Problem Solving', 'Critical Thinking',
+                        'Microsoft Office', 'Excel', 'PowerPoint', 'Word',
+                        'Data Analysis', 'Machine Learning', 'AI', 'Deep Learning',
+                        'Linux', 'Windows', 'MacOS', 'Networking', 'Security',
+                        'REST APIs', 'GraphQL', 'Microservices', 'CI/CD',
+                        'Testing', 'Debugging', 'Code Review', 'Documentation'
+                    ]
+
+                table_data['skill_categories'] = skill_categories
+                print(f"✅ Skill table detected with {len(skill_categories)} categories")
+
             tables_data.append(table_data)
-        
+
         return tables_data
     
     def _detect_sections_advanced(self, words):
@@ -491,17 +558,28 @@ class TemplateAnalyzer:
         print(f"🏷️  Fields Detected: {len(analysis['fields'])}")
         print(f"📑 Sections Found: {len(analysis['sections'])}")
         print(f"🎨 Has Letterhead: {'Yes' if analysis['has_letterhead'] else 'No'}")
-        
+
+        # Show skill table info
+        if 'tables' in analysis:
+            skill_tables = [t for t in analysis['tables'] if t.get('is_skill_table')]
+            if skill_tables:
+                print(f"📊 Skill Tables: {len(skill_tables)}")
+                for st in skill_tables:
+                    if st.get('skill_categories'):
+                        print(f"   Skills Found: {', '.join(st['skill_categories'][:10])}")
+                        if len(st['skill_categories']) > 10:
+                            print(f"   ... and {len(st['skill_categories']) - 10} more")
+
         if analysis['fields']:
             print(f"\n🔍 Detected Fields:")
             for field_name in analysis['fields'].keys():
                 print(f"   • {field_name.upper()}")
-        
+
         if analysis['sections']:
             print(f"\n📚 Detected Sections:")
             for section in analysis['sections'][:5]:
                 print(f"   • {section['heading']}")
-        
+
         print(f"\n{'='*70}\n")
 
 

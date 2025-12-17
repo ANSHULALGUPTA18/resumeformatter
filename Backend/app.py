@@ -546,8 +546,22 @@ def format_resumes():
                 print(f"  ✏️  CAI Contact (single) edit enabled: {cai_contact_data}")
             except Exception as e:
                 print(f"  ⚠️  Error parsing CAI contact data: {e}")
-        
-        def process_single_resume(file, idx, total, cai_data, cai_contacts, edit_cai):
+
+        # Extract skills data
+        skills_data = None
+        if 'skills' in request.form:
+            try:
+                import json
+                skills_data = json.loads(request.form['skills'])
+                print(f"  📊 Skills provided: {len(skills_data)} skill(s)")
+                for skill in skills_data[:5]:  # Show first 5
+                    print(f"     - {skill['name']}: Level {skill['level']}")
+                if len(skills_data) > 5:
+                    print(f"     ... and {len(skills_data) - 5} more")
+            except Exception as e:
+                print(f"  ⚠️  Error parsing skills data: {e}")
+
+        def process_single_resume(file, idx, total, cai_data, cai_contacts, edit_cai, skills):
             """Process a single resume file"""
             if file.filename == '' or not allowed_file(file.filename):
                 return None
@@ -610,7 +624,12 @@ def format_resumes():
             elif cai_data:
                 resume_data['cai_contact'] = cai_data
                 resume_data['edit_cai_contact'] = edit_cai
-            
+
+            # Add skills data if provided
+            if skills:
+                resume_data['selected_skills'] = skills
+                print(f"  📊 Added {len(skills)} skills to resume data")
+
             if resume_data:
                 # Format resume with intelligent formatter
                 # Create DOCX only (NO PDF for speed!)
@@ -658,9 +677,9 @@ def format_resumes():
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
         with ThreadPoolExecutor(max_workers=min(4, len(files))) as executor:
-            # Submit all tasks with CAI contact data (single or multiple)
+            # Submit all tasks with CAI contact data and skills
             future_to_file = {
-                executor.submit(process_single_resume, file, idx, len(files), cai_contact_data, cai_contacts_data, edit_cai_contact): file 
+                executor.submit(process_single_resume, file, idx, len(files), cai_contact_data, cai_contacts_data, edit_cai_contact, skills_data): file
                 for idx, file in enumerate(files, 1)
             }
             
@@ -1153,6 +1172,85 @@ def delete_template(template_id):
         return jsonify({'success': True, 'message': 'Template deleted successfully'})
     except Exception as e:
         print(f"❌ Error deleting template: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/templates/<template_id>', methods=['PUT'])
+def rename_template(template_id):
+    """Rename template in both local and persistent storage"""
+    print(f"✏️ PUT request received to rename template: {template_id}")
+    try:
+        data = request.get_json()
+        if not data or 'name' not in data:
+            return jsonify({'success': False, 'message': 'Missing template name'}), 400
+
+        new_name = data['name'].strip()
+        if not new_name:
+            return jsonify({'success': False, 'message': 'Template name cannot be empty'}), 400
+
+        # Get template from persistent storage first
+        template = persistent_db.get_template(template_id)
+        if not template:
+            # Fallback to local database
+            template = db.get_template(template_id)
+            print(f"✅ Template retrieved from local fallback: {template_id}")
+        else:
+            print(f"✅ Template retrieved from persistent storage: {template_id}")
+
+        if not template:
+            print(f"❌ Template not found: {template_id}")
+            return jsonify({'success': False, 'message': 'Template not found'}), 404
+
+        # Update template name in persistent storage
+        try:
+            # Update the template name
+            template['name'] = new_name
+
+            # Save to persistent storage
+            persistent_success = persistent_db.add_template(
+                template_id,
+                new_name,
+                template['filename'],
+                template['file_type'],
+                template.get('format_data', {}),
+                template.get('cai_contact')
+            )
+
+            if persistent_success:
+                print(f"✅ Template renamed in persistent storage: {template_id} -> {new_name}")
+
+                # Also update local database for backward compatibility
+                try:
+                    db.add_template(
+                        template_id,
+                        new_name,
+                        template['filename'],
+                        template['file_type'],
+                        template.get('format_data', {})
+                    )
+                    print(f"✅ Template renamed in local database: {template_id} -> {new_name}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update local database: {e}")
+
+                return jsonify({
+                    'success': True,
+                    'message': 'Template renamed successfully',
+                    'template': {
+                        'id': template_id,
+                        'name': new_name
+                    }
+                })
+            else:
+                print(f"❌ Failed to rename template in persistent storage")
+                return jsonify({'success': False, 'message': 'Failed to rename template'}), 500
+
+        except Exception as e:
+            print(f"❌ Error renaming template: {e}")
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': str(e)}), 500
+
+    except Exception as e:
+        print(f"❌ Error processing rename request: {e}")
+        traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/templates/<template_id>/content', methods=['GET'])

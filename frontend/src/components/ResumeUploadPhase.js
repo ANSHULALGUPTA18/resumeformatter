@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './ResumeUploadPhase.css';
 import { getCaiContact, saveCaiContact, deleteCaiContact, getTemplateCaiContacts } from '../services/api';
 import CAIContactManager from './CAIContactManager';
+import SkillMatrix from './SkillMatrix';
 
 const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBack, isFormatting, setIsFormatting }) => {
   const [files, setFiles] = useState([]);
@@ -19,8 +20,49 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [allContacts, setAllContacts] = useState([]);
+  const [selectedSkills, setSelectedSkills] = useState([]);
 
   const selectedTemplateData = templates.find(t => t.id === selectedTemplate);
+
+  // Extract skill categories from template
+  const skillCategories = React.useMemo(() => {
+    console.log('🔍 SKILL MATRIX DEBUG - Starting extraction...');
+    console.log('Selected Template ID:', selectedTemplate);
+    console.log('Selected Template Data:', selectedTemplateData);
+
+    if (!selectedTemplateData) {
+      console.log('❌ No template data found');
+      return [];
+    }
+
+    console.log('Template format_data:', selectedTemplateData.format_data);
+
+    if (!selectedTemplateData.format_data) {
+      console.log('❌ No format_data in template');
+      return [];
+    }
+
+    console.log('Tables in format_data:', selectedTemplateData.format_data.tables);
+
+    if (!selectedTemplateData.format_data.tables) {
+      console.log('❌ No tables in format_data');
+      return [];
+    }
+
+    const skillTables = selectedTemplateData.format_data.tables.filter(t => t.is_skill_table);
+    console.log('Skill tables found:', skillTables.length);
+    console.log('Skill tables:', skillTables);
+
+    if (skillTables.length === 0) {
+      console.log('❌ No skill tables detected');
+      return [];
+    }
+
+    // Get skill categories from the first skill table
+    const categories = skillTables[0].skill_categories || [];
+    console.log('✅ Skill categories extracted:', categories);
+    return categories;
+  }, [selectedTemplateData]);
 
   // Load stored CAI contact and all contacts on mount
   useEffect(() => {
@@ -147,7 +189,7 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
     files.forEach(file => {
       formData.append('resume_files', file);
     });
-    
+
     // Send ALL selected CAI contacts (multiple)
     if (selectedContacts && selectedContacts.length > 0) {
       formData.append('cai_contacts', JSON.stringify(selectedContacts));
@@ -156,6 +198,11 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
       // Backward compatibility: single contact
       formData.append('cai_contact', JSON.stringify(caiContact));
       formData.append('edit_cai_contact', 'true');
+    }
+
+    // Send selected skills if any
+    if (selectedSkills && selectedSkills.length > 0) {
+      formData.append('skills', JSON.stringify(selectedSkills));
     }
 
     try {
@@ -236,6 +283,14 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
 
       {/* Main Content Container */}
       <div className="upload-content-container">
+        {/* Skill Matrix (only shown if template has skills table) */}
+        {skillCategories.length > 0 && (
+          <SkillMatrix
+            skillCategories={skillCategories}
+            onSkillsChange={setSelectedSkills}
+          />
+        )}
+
         {/* CAI Contacts Dropdown */}
       <div className="cai-dropdown-wrapper">
         <button className="cai-dropdown-toggle-new" onClick={toggleDropdown}>

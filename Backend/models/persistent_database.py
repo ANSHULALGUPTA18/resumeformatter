@@ -105,12 +105,12 @@ class PersistentTemplateDB:
         Get all templates from persistent storage
 
         Returns:
-            List of template dictionaries (without format_data for performance)
+            List of template dictionaries (including format_data for skill matrix)
         """
         try:
             templates = self._get_templates_from_storage()
 
-            # Return templates without format_data for list view (performance)
+            # Return templates with format_data for skill matrix feature
             return [
                 {
                     'id': t['id'],
@@ -118,11 +118,12 @@ class PersistentTemplateDB:
                     'filename': t['filename'],
                     'file_type': t['file_type'],
                     'upload_date': t['upload_date'],
+                    'format_data': t.get('format_data', {}),  # Include format_data for skill matrix
                     'cai_contact': t.get('cai_contact', None)  # Include CAI contact if present
                 }
                 for t in templates
             ]
-            
+
         except Exception as e:
             print(f"❌ Error getting templates: {e}")
             return []

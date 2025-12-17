@@ -42,9 +42,10 @@ class TemplateDB:
     def get_all_templates(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, name, filename, file_type, upload_date FROM templates')
-        templates = [{'id': row[0], 'name': row[1], 'filename': row[2], 
-                     'file_type': row[3], 'upload_date': row[4]} for row in cursor.fetchall()]
+        cursor.execute('SELECT id, name, filename, file_type, upload_date, format_data FROM templates')
+        templates = [{'id': row[0], 'name': row[1], 'filename': row[2],
+                     'file_type': row[3], 'upload_date': row[4],
+                     'format_data': json.loads(row[5]) if row[5] else {}} for row in cursor.fetchall()]
         conn.close()
         return templates
     
