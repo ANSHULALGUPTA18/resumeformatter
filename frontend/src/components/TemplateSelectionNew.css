@@ -410,6 +410,63 @@
   transform: scale(1.15);
 }
 
+/* Edit Button */
+.edit-btn-new {
+  position: absolute;
+  bottom: 8px;
+  right: 88px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  color: #d1d5db;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 5;
+}
+
+.edit-btn-new:hover {
+  background: rgba(255, 255, 255, 1);
+  color: #f59e0b;
+  transform: scale(1.1);
+}
+
+/* Delete Button */
+.delete-btn-new {
+  position: absolute;
+  bottom: 8px;
+  right: 48px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  color: #d1d5db;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 5;
+}
+
+.delete-btn-new:hover {
+  background: rgba(239, 68, 68, 1);
+  color: white;
+  transform: scale(1.1);
+}
+
+
 /* Modal Styles */
 .modal-overlay-new {
   position: fixed;

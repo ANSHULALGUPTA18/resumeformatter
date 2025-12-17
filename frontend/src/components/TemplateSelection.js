@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './TemplateSelection.css';
+import TemplateEditor from './TemplateEditor';
 
 const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, onUpload, darkMode, onBack }) => {
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -13,6 +14,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
   const [dragOver, setDragOver] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -60,11 +62,12 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
     e.preventDefault();
     setDragOver(false);
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && (droppedFile.name.endsWith('.docx') || droppedFile.name.endsWith('.pdf') || droppedFile.name.endsWith('.doc'))) {
+    const fileName = droppedFile.name.toLowerCase();
+    if (droppedFile && (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf'))) {
       setFile(droppedFile);
       setShowUploadModal(true);
     } else {
-      alert('Please drop a valid template file (.docx, .pdf, or .doc)');
+      alert('Please drop a valid template file (.docx, .doc, or .pdf)');
     }
   };
 
@@ -193,6 +196,15 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
                   🖼 Preview
                 </button>
                 <button
+                  className="overlay-btn edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingTemplate(template);
+                  }}
+                >
+                  ✏️ Edit
+                </button>
+                <button
                   className="overlay-btn use-btn"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -240,7 +252,7 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
         );
         })}
 
-        <div 
+        <div
           className={`template-card add-template ${dragOver ? 'drag-over' : ''}`}
           onClick={() => setShowUploadModal(true)}
           onDragOver={handleDragOver}
@@ -250,8 +262,8 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
           <div className="add-template-content">
             <div className="add-icon pulse">+</div>
             <h3>+ Add New Template</h3>
-            <p>{dragOver ? 'Drop your .docx file here' : 'Upload or drag & drop your template'}</p>
-            <span className="upload-hint">Supports .docx, .pdf, .doc</span>
+            <p>{dragOver ? 'Drop your template file here' : 'Upload or drag & drop your template'}</p>
+            <span className="upload-hint">Supports .docx, .doc, .pdf (DOC files auto-convert to DOCX)</span>
           </div>
         </div>
       </div>
@@ -283,11 +295,11 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
                 />
               </div>
               <div className="form-group">
-                <label>Template File (.pdf, .docx, .doc)</label>
+                <label>Template File (.docx, .doc, .pdf)</label>
                 <div className="file-input-wrapper">
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".docx,.doc,.pdf"
                     onChange={(e) => setFile(e.target.files[0])}
                     required
                     id="file-input"
@@ -296,6 +308,9 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
                     {file ? file.name : 'Choose file...'}
                   </label>
                 </div>
+                <small style={{color: '#6b7280', marginTop: '8px', display: 'block'}}>
+                  Supports Word documents (.docx, .doc) and PDFs. .doc files will be converted to .docx automatically.
+                </small>
               </div>
               <div className="form-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowUploadModal(false)}>
@@ -361,15 +376,15 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
             <h3>Delete Template?</h3>
             <p>Are you sure you want to delete this template? This action cannot be undone.</p>
             <div className="delete-actions">
-              <button 
-                className="btn-secondary" 
+              <button
+                className="btn-secondary"
                 onClick={() => setDeleteConfirmId(null)}
                 disabled={isDeleting}
               >
                 Cancel
               </button>
-              <button 
-                className="btn-danger" 
+              <button
+                className="btn-danger"
                 onClick={async () => {
                   setIsDeleting(true);
                   try {
@@ -388,6 +403,19 @@ const TemplateSelection = ({ templates, selectedTemplate, onSelect, onDelete, on
             </div>
           </div>
         </div>
+      )}
+
+      {/* Template Editor Modal */}
+      {editingTemplate && (
+        <TemplateEditor
+          template={editingTemplate}
+          onClose={() => setEditingTemplate(null)}
+          onSave={() => {
+            // Refresh templates after save
+            onUpload();
+          }}
+          darkMode={darkMode}
+        />
       )}
     </div>
   );

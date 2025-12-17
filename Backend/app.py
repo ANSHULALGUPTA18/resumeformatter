@@ -16,10 +16,21 @@ from models.persistent_database import get_persistent_template_db, get_persisten
 from utils.advanced_template_analyzer import analyze_template
 from utils.advanced_resume_parser import parse_resume
 from utils.doc_converter import convert_doc_to_docx, needs_conversion
+from utils.cai_contact_extractor import extract_cai_contact_from_template
 from utils.azure_storage import get_storage_manager
 
 # Import routes
 from routes.onlyoffice_routes import onlyoffice_bp
+
+# Import Azure Monitor tracker (supports Live Metrics)
+try:
+    from utils.azure_monitor_tracker import AzureMonitorTracker
+    insights_tracker = AzureMonitorTracker()
+    insights_available = True
+except Exception as e:
+    print(f"[WARN] Azure Monitor not available: {e}")
+    insights_tracker = None
+    insights_available = False
 
 # Try to import enhanced formatter, fallback to standard if not available
 try:
@@ -40,11 +51,18 @@ else:
 
 static_dir = os.path.join(frontend_dir, 'static')
 
-app = Flask(__name__, 
+app = Flask(__name__,
            static_folder=static_dir,
            template_folder=frontend_dir)
 app.config.from_object(Config)
 Config.init_app(app)
+
+# Initialize Azure Monitor
+if insights_available and insights_tracker:
+    insights_tracker.init_app(app)
+    print("[OK] Azure Monitor tracking enabled")
+else:
+    print("[WARN] Azure Monitor not initialized")
 
 # Enable CORS for React frontend and OnlyOffice Document Server
 # CRITICAL: Must allow Docker container IPs for OnlyOffice callbacks
@@ -201,21 +219,30 @@ def delete_cai_contact():
 def get_template_cai_contacts(template_id):
     """Get CAI contacts associated with a specific template"""
     try:
-        # For now, return the single CAI contact as this is our current implementation
-        # In the future, this could be expanded to support multiple contacts per template
-        contact_data = cai_db.get_contact()
-        
-        if contact_data:
+        # Get template with CAI contact
+        template = persistent_db.get_template(template_id)
+        if not template:
+            template = db.get_template(template_id)
+
+        if template and template.get('cai_contact'):
+            # Return the CAI contact extracted from the template
+            cai_contact = template['cai_contact']
+            print(f"✅ CAI Contact from template {template_id}: {cai_contact.get('name', 'N/A')} ({cai_contact.get('state', 'N/A')})")
+
             return jsonify({
-                "success": True, 
-                "contacts": [{"id": 1, **contact_data}],
-                "contact_ids": [1]
+                "success": True,
+                "contacts": [{"id": 1, **cai_contact}],
+                "contact_ids": [1],
+                "template_name": template.get('name', 'Unknown')
             })
         else:
+            # No CAI contact in template, return empty
+            print(f"⚠️ No CAI contact found in template {template_id}")
             return jsonify({
-                "success": True, 
+                "success": True,
                 "contacts": [],
-                "contact_ids": []
+                "contact_ids": [],
+                "template_name": template.get('name', 'Unknown') if template else 'Unknown'
             })
     except Exception as e:
         print(f"❌ Error getting template CAI contacts: {e}")
@@ -348,24 +375,24 @@ def upload_template():
         print(f"📄 Original file type: {file_type}")
         print(f"{'='*70}\n")
         
-        # Handle .doc files - try conversion or provide helpful message
+        # Handle .doc files - try conversion or accept as-is
         final_file_path = file_path
         final_file_type = file_type
-        
+
         if needs_conversion(filename):
-            print(f"🔄 Converting .doc to .docx...")
+            print(f"🔄 Attempting to convert .doc to .docx...")
             converted_path = convert_doc_to_docx(file_path)
-            
+
             if converted_path and os.path.exists(converted_path):
                 print(f"✅ Successfully converted to .docx")
                 # Update file info to point to converted file
                 final_file_path = converted_path
                 final_file_type = 'docx'
-                
+
                 # Update saved filename to reflect the conversion
                 converted_filename = os.path.basename(converted_path)
                 saved_filename = converted_filename
-                
+
                 # Remove original .doc file to save space
                 try:
                     os.remove(file_path)
@@ -373,17 +400,29 @@ def upload_template():
                 except:
                     pass
             else:
-                print(f"⚠️  .doc conversion not available in this deployment")
+                print(f"❌ .doc conversion not available - LibreOffice/Pandoc not installed")
+                # Clean up the uploaded file
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
                 return jsonify({
-                    'success': False, 
-                    'message': 'Please convert your .doc file to .docx format before uploading. You can use Microsoft Word: File → Save As → Word Document (.docx)'
+                    'success': False,
+                    'message': 'Cannot process .doc files. Please save as .docx format in Microsoft Word (File → Save As → Word Document (.docx)) and try again.'
                 }), 400
         
         # Analyze template with advanced analyzer
         format_data = analyze_template(final_file_path)
-        
+
+        # Extract CAI contact information from template
+        cai_contact = extract_cai_contact_from_template(final_file_path)
+        if cai_contact:
+            print(f"✅ CAI Contact detected in template:")
+            print(f"   Name: {cai_contact.get('name', 'N/A')}")
+            print(f"   State: {cai_contact.get('state', 'N/A')}")
+
         # Save to persistent storage
-        persistent_success = persistent_db.add_template(template_id, name, saved_filename, final_file_type, format_data)
+        persistent_success = persistent_db.add_template(template_id, name, saved_filename, final_file_type, format_data, cai_contact)
         
         if persistent_success:
             # Upload file to persistent storage
@@ -529,16 +568,16 @@ def format_resumes():
             # Convert .doc to .docx if needed
             final_file_path = file_path
             final_file_type = file_type
-            
+
             if needs_conversion(filename):
                 print(f"🔄 Converting resume .doc to .docx...")
                 converted_path = convert_doc_to_docx(file_path)
-                
+
                 if converted_path and os.path.exists(converted_path):
                     print(f"✅ Successfully converted resume to .docx")
                     final_file_path = converted_path
                     final_file_type = 'docx'
-                    
+
                     # Remove original .doc file to save space
                     try:
                         os.remove(file_path)
@@ -546,8 +585,17 @@ def format_resumes():
                     except:
                         pass
                 else:
-                    print(f"⚠️  Resume .doc conversion not available, skipping this file")
-                    return None  # Skip this resume file
+                    print(f"⚠️  Resume .doc conversion not available, treating as .docx")
+                    # Try renaming to .docx
+                    try:
+                        docx_path = file_path.replace('.doc', '.docx')
+                        os.rename(file_path, docx_path)
+                        final_file_path = docx_path
+                        final_file_type = 'docx'
+                        print(f"✅ Renamed resume .doc to .docx")
+                    except Exception as e:
+                        print(f"⚠️  Could not rename resume, continuing anyway: {e}")
+                        pass
             
             # Parse resume with advanced parser (with timing)
             parse_start = time.time()
@@ -627,7 +675,27 @@ def format_resumes():
         print(f"✅ FORMATTING COMPLETE: {len(formatted_files)}/{len(files)} successful")
         print(f"⏱️  Total Time: {elapsed_time:.2f} seconds ({elapsed_time/len(files):.2f}s per resume)")
         print(f"{'='*70}\n")
-        
+
+        # Track successful output generation in Application Insights
+        if insights_available and insights_tracker:
+            try:
+                # Get user info from request (if using Azure AD authentication)
+                user_id = request.headers.get('X-User-Id', 'anonymous')
+                user_email = request.headers.get('X-User-Email', 'anonymous@example.com')
+
+                insights_tracker.track_output_generated(
+                    user_id=user_id,
+                    template_id=template_id,
+                    template_name=template.get('name', 'Unknown'),
+                    input_count=len(files),
+                    output_count=len(formatted_files),
+                    processing_time_ms=int(elapsed_time * 1000),
+                    success=True
+                )
+                print(f"[INSIGHTS] Tracked output generation: {len(formatted_files)} outputs")
+            except Exception as track_error:
+                print(f"[WARN] Failed to track event: {track_error}")
+
         return jsonify({
             'success': True,
             'files': formatted_files,
@@ -1087,34 +1155,223 @@ def delete_template(template_id):
         print(f"❌ Error deleting template: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/templates/<template_id>/content', methods=['GET'])
+def get_template_content(template_id):
+    """Get template content for editing"""
+    try:
+        print(f"📖 GET /api/templates/{template_id}/content - Request received")
+
+        # Get template from persistent storage first, then fallback
+        template = persistent_db.get_template(template_id)
+        if not template:
+            print(f"⚠️ Template not in persistent storage, checking local DB...")
+            template = db.get_template(template_id)
+
+        if not template:
+            print(f"❌ Template not found: {template_id}")
+            return jsonify({'success': False, 'message': 'Template not found in database'}), 404
+
+        print(f"✅ Template found: {template['name']} (file: {template['filename']})")
+
+        # Get template file
+        template_filename = template['filename']
+        local_template_path = os.path.join(Config.TEMPLATE_FOLDER, template_filename)
+
+        print(f"📁 Looking for template file at: {local_template_path}")
+
+        # Download from persistent storage if not local
+        if not os.path.exists(local_template_path):
+            print(f"📥 Template not local, attempting download from persistent storage...")
+            try:
+                download_success = persistent_db.download_template_file(template_id, template_filename, local_template_path)
+                if not download_success:
+                    print(f"❌ Failed to download template file from persistent storage")
+                    return jsonify({'success': False, 'message': 'Template file not available in storage'}), 404
+                print(f"✅ Template downloaded successfully")
+            except Exception as dl_error:
+                print(f"❌ Download error: {dl_error}")
+                return jsonify({'success': False, 'message': f'Failed to download template: {str(dl_error)}'}), 500
+
+        # Verify file exists
+        if not os.path.exists(local_template_path):
+            print(f"❌ Template file still not found after download attempt: {local_template_path}")
+            return jsonify({'success': False, 'message': 'Template file not found on disk'}), 404
+
+        print(f"✅ Template file exists, extracting content...")
+
+        # Extract text content from DOCX using Mammoth (more reliable)
+        try:
+            import mammoth
+
+            print(f"📄 Extracting content using Mammoth...")
+
+            with open(local_template_path, "rb") as docx_file:
+                result = mammoth.convert_to_html(docx_file)
+                html_content = result.value
+                messages = result.messages
+
+                # Log any warnings
+                for message in messages:
+                    print(f"  ⚠️  {message}")
+
+            if not html_content or html_content.strip() == "":
+                html_content = "<p>No content found in template</p>"
+
+            print(f"✅ Template content extracted successfully")
+            return jsonify({
+                'success': True,
+                'content': html_content,
+                'template_name': template['name']
+            })
+
+        except Exception as e:
+            print(f"❌ Error extracting template content: {e}")
+            traceback.print_exc()
+
+            # Return user-friendly error message
+            error_msg = str(e)
+            if "not a Word file" in error_msg or "content type" in error_msg:
+                error_msg = "This file appears to be corrupted or is not a valid DOCX file. Please re-upload or save as .docx format."
+
+            return jsonify({
+                'success': False,
+                'message': f'Cannot edit this template: {error_msg}'
+            }), 500
+
+    except Exception as e:
+        print(f"❌ Error getting template content: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/templates/<template_id>/content', methods=['PUT'])
+def update_template_content(template_id):
+    """Update template content from editor"""
+    try:
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return jsonify({'success': False, 'message': 'No content provided'}), 400
+
+        content_html = data['content']
+
+        # Get template
+        template = persistent_db.get_template(template_id)
+        if not template:
+            template = db.get_template(template_id)
+
+        if not template:
+            return jsonify({'success': False, 'message': 'Template not found'}), 404
+
+        # Get template file
+        template_filename = template['filename']
+        local_template_path = os.path.join(Config.TEMPLATE_FOLDER, template_filename)
+
+        # Download from persistent storage if not local
+        if not os.path.exists(local_template_path):
+            print(f"📥 Downloading template file for updating...")
+            download_success = persistent_db.download_template_file(template_id, template_filename, local_template_path)
+            if not download_success:
+                return jsonify({'success': False, 'message': 'Template file not available'}), 404
+
+        # Update DOCX content (preserving as much formatting as possible)
+        try:
+            from docx import Document
+            from bs4 import BeautifulSoup
+            import re
+
+            print(f"📝 Updating template content...")
+
+            doc = Document(local_template_path)
+            soup = BeautifulSoup(content_html, 'html.parser')
+
+            # Extract plain text from HTML
+            new_text_content = soup.get_text(separator='\n').strip()
+
+            # Try to match paragraphs and update them in place (preserves formatting)
+            new_lines = [line.strip() for line in new_text_content.split('\n') if line.strip()]
+
+            # Update existing paragraphs without removing them (preserves formatting)
+            para_index = 0
+            for paragraph in doc.paragraphs:
+                if para_index < len(new_lines):
+                    # Update text while keeping formatting
+                    if paragraph.text.strip():  # Only update non-empty paragraphs
+                        paragraph.text = new_lines[para_index]
+                        para_index += 1
+
+            # If there are more new lines than existing paragraphs, add them
+            while para_index < len(new_lines):
+                doc.add_paragraph(new_lines[para_index])
+                para_index += 1
+
+            # Save updated document
+            doc.save(local_template_path)
+            print(f"✅ Template content updated ({para_index} paragraphs)")
+
+            # Upload to persistent storage
+            upload_success = persistent_db.upload_template_file(template_id, local_template_path, template_filename)
+
+            if upload_success:
+                print(f"✅ Template content updated: {template_id}")
+
+                # Delete cached thumbnail to force regeneration
+                try:
+                    storage_manager.delete_thumbnail(template_id)
+                    print(f"✅ Thumbnail cache cleared for updated template")
+                except:
+                    pass
+
+                return jsonify({
+                    'success': True,
+                    'message': 'Template updated successfully'
+                })
+            else:
+                print(f"⚠️ Failed to upload updated template to persistent storage")
+                return jsonify({'success': False, 'message': 'Failed to save changes'}), 500
+
+        except Exception as e:
+            print(f"❌ Error updating template content: {e}")
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': f'Failed to update content: {str(e)}'}), 500
+
+    except Exception as e:
+        print(f"❌ Error updating template: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/onlyoffice/status', methods=['GET'])
 def onlyoffice_status():
     """Check OnlyOffice Document Server status"""
     try:
         import requests
-        response = requests.get('https://onlyoffice.reddesert-f6724e64.centralus.azurecontainerapps.io/healthcheck', timeout=2)
+        # Check local Docker container
+        onlyoffice_url = Config.ONLYOFFICE_URL.rstrip('/')
+        response = requests.get(f'{onlyoffice_url}/healthcheck', timeout=2)
         if response.status_code == 200:
             return jsonify({
                 'success': True,
                 'status': 'running',
+                'available': True,
                 'message': 'OnlyOffice Document Server is running'
             })
         else:
             return jsonify({
                 'success': False,
                 'status': 'error',
+                'available': False,
                 'message': f'OnlyOffice returned status code {response.status_code}'
             })
     except requests.exceptions.ConnectionError:
         return jsonify({
             'success': False,
             'status': 'offline',
-            'message': 'OnlyOffice Document Server is not running. Start it with: docker start onlyoffice-documentserver'
+            'available': False,
+            'message': 'OnlyOffice Document Server is not running. Start it with: docker start onlyoffice-docs'
         })
     except Exception as e:
         return jsonify({
             'success': False,
             'status': 'error',
+            'available': False,
             'message': str(e)
         })
 
@@ -1219,7 +1476,7 @@ if __name__ == '__main__':
     # except Exception as e:
     #     print(f"  Model pre-warming failed: {e}")
     #     print("   Models will load on first request instead")
-    print("⚡ Quick startup mode: ML models will load on first request")
+    print("[QUICK] ML models will load on first request")
     
     import socket
     

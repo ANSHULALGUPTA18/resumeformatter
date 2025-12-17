@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './TemplateSelectionNew.css';
+import OnlyOfficeTemplateEditor from './OnlyOfficeTemplateEditor';
 
 const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete, onUpload, darkMode, onBack }) => {
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -9,6 +10,7 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('available');
   const scrollRef = useRef(null);
+  const [editingTemplate, setEditingTemplate] = useState(null);
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -108,11 +110,12 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
   const handleDrop = (e) => {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && (droppedFile.name.endsWith('.docx') || droppedFile.name.endsWith('.pdf') || droppedFile.name.endsWith('.doc'))) {
+    const fileName = droppedFile.name.toLowerCase();
+    if (droppedFile && (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pdf'))) {
       setFile(droppedFile);
       setShowUploadModal(true);
     } else {
-      alert('Please drop a valid template file (.docx, .pdf, or .doc)');
+      alert('Please drop a valid template file (.docx, .doc, or .pdf)');
     }
   };
 
@@ -199,6 +202,41 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                     >
                       <i className="fas fa-star"></i>
                     </button>
+                    <button
+                      className="edit-btn-new"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTemplate(template);
+                      }}
+                      title="Edit template"
+                    >
+                      <i className="fas fa-edit"></i>
+                    </button>
+                    <button
+                      className="delete-btn-new"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
+                          try {
+                            const result = await onDelete(template.id);
+                            if (result && result.success) {
+                              // Remove from favorites if present
+                              if (favorites.includes(template.id)) {
+                                const newFavorites = favorites.filter(id => id !== template.id);
+                                setFavorites(newFavorites);
+                                localStorage.setItem('templateFavorites', JSON.stringify(newFavorites));
+                              }
+                            }
+                          } catch (error) {
+                            console.error('Error deleting template:', error);
+                            alert('Failed to delete template. Please try again.');
+                          }
+                        }
+                      }}
+                      title="Delete template"
+                    >
+                      <i className="fas fa-trash-alt"></i>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -216,29 +254,22 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
         <div className="modal-overlay-new" onClick={() => setShowUploadModal(false)}>
           <div className="modal-content-new" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header-new">
-              <h3>Add CAI Contacts to Project Plan</h3>
+              <h3>📤 Upload New Template</h3>
               <button className="close-btn-new" onClick={() => setShowUploadModal(false)}>×</button>
             </div>
             <form onSubmit={handleUpload} className="upload-form-new">
-              {/* Dropdown Section */}
-              <div className="dropdown-section">
-                <div className="dropdown-header">
-                  <i className="fas fa-users dropdown-icon"></i>
-                  <span className="dropdown-text">CAI Contacts</span>
-                  <span className="dropdown-badge">5</span>
-                  <i className="fas fa-chevron-down dropdown-arrow"></i>
-                </div>
-              </div>
-
               <div className="form-group-new">
                 <div className="file-input-wrapper-new" onDragOver={handleDragOver} onDrop={handleDrop}>
                   <div className="upload-icon">
                     <i className="fas fa-cloud-upload-alt"></i>
                   </div>
-                  <p className="upload-text">Drag and drop your resume files here (PDF, DOCX)</p>
+                  <p className="upload-text">Drag and drop your template files here</p>
+                  <p className="upload-hint" style={{fontSize: '13px', color: '#9ca3af', marginTop: '8px'}}>
+                    Supports: <strong>.DOCX, .DOC, .PDF</strong> • DOC files auto-convert to DOCX
+                  </p>
                   <input
                     type="file"
-                    accept=".pdf,.doc,.docx"
+                    accept=".docx,.doc,.pdf"
                     onChange={(e) => setFile(e.target.files[0])}
                     required
                     id="file-input-new"
@@ -274,12 +305,26 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
                   Cancel
                 </button>
                 <button type="submit" className="btn-format-new" disabled={uploading || !file}>
-                  {uploading ? 'Uploading...' : 'Format'}
+                  {uploading ? 'Uploading...' : 'Upload Template'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Template Editor Modal */}
+      {editingTemplate && (
+        <OnlyOfficeTemplateEditor
+          template={editingTemplate}
+          onClose={() => setEditingTemplate(null)}
+          onSave={() => {
+            // Refresh templates after save
+            onUpload();
+            setEditingTemplate(null);
+          }}
+          darkMode={darkMode}
+        />
       )}
     </div>
   );

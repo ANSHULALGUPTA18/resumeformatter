@@ -50,24 +50,25 @@ class PersistentTemplateDB:
         
         return success
     
-    def add_template(self, template_id: str, name: str, filename: str, file_type: str, format_data: Dict[str, Any]) -> bool:
+    def add_template(self, template_id: str, name: str, filename: str, file_type: str, format_data: Dict[str, Any], cai_contact: Optional[Dict[str, Any]] = None) -> bool:
         """
         Add a new template to persistent storage
-        
+
         Args:
             template_id: Unique template identifier
             name: Template display name
             filename: Original filename
             file_type: File type (docx, doc, etc.)
             format_data: Template formatting data
-            
+            cai_contact: CAI contact information extracted from template
+
         Returns:
             bool: Success status
         """
         try:
             # Get current templates
             templates = self._get_templates_from_storage()
-            
+
             # Create new template entry
             new_template = {
                 'id': template_id,
@@ -75,7 +76,8 @@ class PersistentTemplateDB:
                 'filename': filename,
                 'file_type': file_type,
                 'upload_date': datetime.now().isoformat(),
-                'format_data': format_data
+                'format_data': format_data,
+                'cai_contact': cai_contact if cai_contact else None
             }
             
             # Remove existing template with same ID (if any)
@@ -101,13 +103,13 @@ class PersistentTemplateDB:
     def get_all_templates(self) -> List[Dict[str, Any]]:
         """
         Get all templates from persistent storage
-        
+
         Returns:
             List of template dictionaries (without format_data for performance)
         """
         try:
             templates = self._get_templates_from_storage()
-            
+
             # Return templates without format_data for list view (performance)
             return [
                 {
@@ -115,7 +117,8 @@ class PersistentTemplateDB:
                     'name': t['name'],
                     'filename': t['filename'],
                     'file_type': t['file_type'],
-                    'upload_date': t['upload_date']
+                    'upload_date': t['upload_date'],
+                    'cai_contact': t.get('cai_contact', None)  # Include CAI contact if present
                 }
                 for t in templates
             ]
@@ -226,6 +229,47 @@ class PersistentTemplateDB:
         self.templates_cache = None
         self.cache_timestamp = None
         print("🧹 Template cache cleared")
+    
+    def update_template_cai_contact(self, template_id: str, cai_contact: Dict[str, Any]) -> bool:
+        """
+        Update CAI contact information for a template
+        
+        Args:
+            template_id: Template identifier
+            cai_contact: CAI contact dictionary with name, phone, email, state
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Get current templates
+            templates = self._get_templates_from_storage()
+            
+            # Find and update the template
+            updated = False
+            for template in templates:
+                if template['id'] == template_id:
+                    template['cai_contact'] = cai_contact
+                    updated = True
+                    print(f"✅ Updated CAI contact for template '{template['name']}'")
+                    break
+            
+            if not updated:
+                print(f"⚠️ Template not found for CAI contact update: {template_id}")
+                return False
+            
+            # Save updated list
+            success = self._save_templates_to_storage(templates)
+            
+            if success:
+                # Clear cache to force reload
+                self.clear_cache()
+            
+            return success
+            
+        except Exception as e:
+            print(f"❌ Error updating template CAI contact: {e}")
+            return False
 
 
 class PersistentCAIContactDB:

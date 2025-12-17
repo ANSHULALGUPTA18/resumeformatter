@@ -18,7 +18,7 @@ try:
     INSIGHTS_AVAILABLE = True
 except ImportError:
     INSIGHTS_AVAILABLE = False
-    print("⚠️  Azure Application Insights packages not installed")
+    print("[WARN] Azure Application Insights packages not installed")
 
 
 class InsightsTracker:
@@ -42,14 +42,14 @@ class InsightsTracker:
         self.connection_string = os.getenv('APPLICATIONINSIGHTS_CONNECTION_STRING')
 
         if not self.connection_string:
-            print("⚠️  Application Insights not configured (missing APPLICATIONINSIGHTS_CONNECTION_STRING)")
-            print("💡 Add APPLICATIONINSIGHTS_CONNECTION_STRING to your .env file when ready")
+            print("[WARN] Application Insights not configured (missing APPLICATIONINSIGHTS_CONNECTION_STRING)")
+            print("[INFO] Add APPLICATIONINSIGHTS_CONNECTION_STRING to your .env file when ready")
             self.enabled = False
             return
 
         if not INSIGHTS_AVAILABLE:
-            print("⚠️  Azure Application Insights packages not installed")
-            print("💡 Run: pip install opencensus-ext-azure opencensus-ext-flask")
+            print("[WARN] Azure Application Insights packages not installed")
+            print("[INFO] Run: pip install opencensus-ext-azure opencensus-ext-flask")
             self.enabled = False
             return
 
@@ -72,11 +72,11 @@ class InsightsTracker:
             self.logger = logger
             self.enabled = True
 
-            print("✅ Application Insights enabled - tracking active")
-            print(f"📊 View analytics at: https://portal.azure.com")
+            print("[OK] Application Insights enabled - tracking active")
+            print("[INFO] View analytics at: https://portal.azure.com")
 
         except Exception as e:
-            print(f"❌ Failed to initialize Application Insights: {e}")
+            print(f"[ERROR] Failed to initialize Application Insights: {e}")
             self.enabled = False
 
     def track_event(self, event_name: str, properties: Optional[Dict] = None, measurements: Optional[Dict] = None):
@@ -108,7 +108,7 @@ class InsightsTracker:
             self.logger.info(f"Event: {event_name}", extra=log_data)
 
         except Exception as e:
-            print(f"⚠️  Failed to track event '{event_name}': {e}")
+            print(f"[WARN] Failed to track event '{event_name}': {e}")
 
     def track_user_login(self, user_id: str, user_email: str, user_name: str = None):
         """Track user login event."""
@@ -192,7 +192,7 @@ class InsightsTracker:
             self.logger.error(f"Error: {error_type}", extra={"custom_dimensions": properties})
 
         except Exception as e:
-            print(f"⚠️  Failed to track error: {e}")
+            print(f"[WARN] Failed to track error: {e}")
 
 
 # Global instance

@@ -8,9 +8,9 @@
 # ============================================================================
 # CORE WEB FRAMEWORK
 # ============================================================================
-Flask==3.0.0                    # Main web framework
+Flask==2.3.3                    # Main web framework (compatible with opencensus)
 Flask-CORS==4.0.0               # Cross-Origin Resource Sharing support
-Werkzeug==3.0.1                 # WSGI utility library (comes with Flask)
+Werkzeug==2.3.7                 # WSGI utility library (compatible with Flask 2.3.3)
 MarkupSafe==2.1.3               # Required by Flask/Werkzeug
 # gunicorn==20.1.0                # Production WSGI server (for Azure deployment) - REMOVED: Duplicate
 
@@ -25,6 +25,7 @@ reportlab==4.0.7                # PDF generation
 Pillow>=10.3.0                  # Image processing (PIL fork) - Updated for Python 3.13
 # PyMuPDF==1.23.8               # Fast PDF processing (fitz) - COMMENTED: Requires Visual Studio on Windows
 mammoth==1.6.0                  # Convert DOCX to HTML for preview
+beautifulsoup4==4.12.2          # HTML/XML parsing for template editing
 
 # ============================================================================
 # MACHINE LEARNING & NLP (Optimized for Speed + Accuracy)

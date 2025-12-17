@@ -46,3 +46,10 @@ export const deleteCaiContact = async () => {
   const response = await axios.delete(`${API_BASE_URL}/cai-contact`);
   return response.data; // { success, message }
 };
+
+// Get CAI contacts from a specific template
+export const getTemplateCaiContacts = async (templateId) => {
+  const response = await axios.get(`${API_BASE_URL}/templates/${templateId}/cai-contacts`);
+  return response.data; // { success, contacts, contact_ids }
+};
+

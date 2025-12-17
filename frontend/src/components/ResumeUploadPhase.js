@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './ResumeUploadPhase.css';
-import { getCaiContact, saveCaiContact, deleteCaiContact } from '../services/api';
+import { getCaiContact, saveCaiContact, deleteCaiContact, getTemplateCaiContacts } from '../services/api';
 import CAIContactManager from './CAIContactManager';
 
 const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBack, isFormatting, setIsFormatting }) => {
@@ -38,6 +38,47 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
       }
     })();
   }, []);
+
+  // Load CAI contact from selected template when template changes
+  useEffect(() => {
+    if (selectedTemplate) {
+      (async () => {
+        try {
+          console.log(`🔍 Loading CAI contact from template: ${selectedTemplate}`);
+          const res = await getTemplateCaiContacts(selectedTemplate);
+          
+          if (res?.success && res?.contacts && res.contacts.length > 0) {
+            const templateContact = res.contacts[0];
+            console.log('✅ CAI Contact detected from template:', templateContact);
+            
+            // Add template contact to all contacts list if not already there
+            setAllContacts(prev => {
+              const exists = prev.some(c => 
+                c.name === templateContact.name && 
+                c.email === templateContact.email
+              );
+              if (!exists) {
+                return [...prev, { ...templateContact, id: Date.now() }];
+              }
+              return prev;
+            });
+            
+            // Auto-select the template contact
+            setSelectedContacts([templateContact]);
+            
+            // Show notification to user
+            if (templateContact.name) {
+              console.log(`📋 Auto-selected CAI Contact: ${templateContact.name}`);
+            }
+          } else {
+            console.log('⚠️ No CAI contact found in template');
+          }
+        } catch (e) {
+          console.error('Error loading template CAI contact:', e);
+        }
+      })();
+    }
+  }, [selectedTemplate]);
 
   const toggleDropdown = () => {
     setIsDropdownOpen(!isDropdownOpen);
@@ -226,7 +267,9 @@ const ResumeUploadPhase = ({ selectedTemplate, templates, onFormatSuccess, onBac
                         onChange={() => toggleContactSelection(contact)}
                       />
                       <div className="contact-info-new" onClick={() => toggleContactSelection(contact)}>
-                        <div className="contact-name-new">{contact.name}</div>
+                        <div className="contact-name-new">
+                          {contact.name}{contact.state ? ` - ${contact.state}` : ''}
+                        </div>
                         <div className="contact-details-new">
                           {contact.email} • {contact.phone}
                         </div>

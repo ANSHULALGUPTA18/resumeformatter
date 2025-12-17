@@ -299,7 +299,7 @@ Expected output:
 🎯 RESUME FORMATTER - BACKEND SERVER
 ======================================================================
 ✅ API running on http://127.0.0.1:5000
-✅ React frontend: http://localhost:3000
+✅ React frontend: http://localhost:3001
 ======================================================================
  * Debug mode: on
 ```
@@ -316,15 +316,15 @@ Compiled successfully!
 
 You can now view resume-formatter in the browser.
 
-  Local:            http://localhost:3000
-  On Your Network:  http://192.168.1.x:3000
+  Local:            http://localhost:3001
+  On Your Network:  http://192.168.1.x:3001
 ```
 
 ### Access the Application
 
 Open browser and navigate to:
 ```
-http://localhost:3000
+http://localhost:3001
 ```
 
 ---
