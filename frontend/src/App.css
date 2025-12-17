@@ -10,7 +10,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: rgb(247, 247, 247);
+  background: #ffffff;
   background-attachment: fixed;
   min-height: 100vh;
   color: #1e293b;
@@ -21,7 +21,7 @@ body {
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
-  background: rgb(247, 247, 247);
+  background: #ffffff;
 }
 
 /* Fullscreen mode for download phase */
@@ -44,15 +44,15 @@ body {
 
 /* Global Dark Mode */
 .App.dark-mode {
-  background: rgb(247, 247, 247);
+  background: #ffffff;
 }
 
 .App.dark-mode body {
-  background: rgb(247, 247, 247);
+  background: #ffffff;
 }
 
 .header {
-  background: #ffffff;
+  background: #3B82F6;
   padding: 12px 12px;
   box-shadow: none;
   position: sticky;
@@ -64,7 +64,7 @@ body {
 }
 
 .App.dark-mode .header {
-  background: #ffffff;
+  background: #3B82F6;
   border-bottom: 1px solid rgba(229, 231, 235, 0.8);
   box-shadow: none;
 }
@@ -113,7 +113,7 @@ body {
 .brand-title {
   font-size: 32px;
   font-weight: 700;
-  color: rgba(106, 113, 216, 1);
+  color: #ffffff;
   margin: 0;
   font-family: 'Roboto', sans-serif;
   line-height: 1.2;
@@ -121,7 +121,7 @@ body {
 
 .brand-subtitle {
   font-size: 14px;
-  color: rgba(107, 114, 128, 1);
+  color: rgba(255, 255, 255, 0.9);
   font-family: 'Roboto', sans-serif;
   font-weight: 300;
   letter-spacing: 2px;
