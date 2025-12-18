@@ -32,7 +32,7 @@ try:
     HAS_WIN32 = True
 except ImportError:
     HAS_WIN32 = False
-    print("⚠️  win32com not available - .doc files will have limited support")
+    print("WARNING: win32com not available - .doc files will have limited support")
 
 class WordFormatter:
     """Enhanced Word document formatting"""

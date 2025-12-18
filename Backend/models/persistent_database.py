@@ -252,24 +252,24 @@ class PersistentTemplateDB:
                 if template['id'] == template_id:
                     template['cai_contact'] = cai_contact
                     updated = True
-                    print(f"✅ Updated CAI contact for template '{template['name']}'")
+                    print(f"Updated CAI contact for template '{template['name']}'")
                     break
-            
+
             if not updated:
-                print(f"⚠️ Template not found for CAI contact update: {template_id}")
+                print(f"WARNING: Template not found for CAI contact update: {template_id}")
                 return False
-            
+
             # Save updated list
             success = self._save_templates_to_storage(templates)
-            
+
             if success:
                 # Clear cache to force reload
                 self.clear_cache()
-            
+
             return success
-            
+
         except Exception as e:
-            print(f"❌ Error updating template CAI contact: {e}")
+            print(f"ERROR: Error updating template CAI contact: {e}")
             return False
 
 

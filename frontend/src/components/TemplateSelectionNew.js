@@ -205,11 +205,13 @@ const TemplateSelectionNew = ({ templates, selectedTemplate, onSelect, onDelete,
 
           <div className="horizontal-scroll-container" ref={scrollRef}>
             <div className="template-row">
-              {/* Add New Template Card - Always First and Always Visible */}
-              <div className="add-template-card" onClick={() => setShowUploadModal(true)}>
-                <i className="fas fa-plus add-template-icon"></i>
-                <div className="add-template-text">Add New Template</div>
-              </div>
+              {/* Add New Template Card - Only in Available Templates Tab */}
+              {activeTab === 'available' && (
+                <div className="add-template-card" onClick={() => setShowUploadModal(true)}>
+                  <i className="fas fa-plus add-template-icon"></i>
+                  <div className="add-template-text">Add New Template</div>
+                </div>
+              )}
 
               {currentTemplates.length === 0 ? (
                 <div className="empty-state-inline">

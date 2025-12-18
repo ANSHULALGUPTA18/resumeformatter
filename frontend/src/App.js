@@ -4,27 +4,25 @@ import WizardStepper from './components/WizardStepper';
 import TemplateSelectionNew from './components/TemplateSelectionNew';
 import ResumeUploadPhase from './components/ResumeUploadPhase';
 import DownloadPhase from './components/DownloadPhase';
+import UserProfileDropdown from './components/UserProfileDropdown';
+import useUserProfilePhoto from './hooks/useUserProfilePhoto';
 import './App.css';
 
 // Clear localStorage immediately when the module loads, but preserve certain items
-const savedDarkMode = localStorage.getItem('darkMode');
 const savedFavorites = localStorage.getItem('templateFavorites');
 localStorage.clear();
-if (savedDarkMode) {
-  localStorage.setItem('darkMode', savedDarkMode);
-}
 if (savedFavorites) {
   localStorage.setItem('templateFavorites', savedFavorites);
 }
 
 function App() {
   const { instance, accounts } = useMsal();
+  const { photoUrl, loading: photoLoading } = useUserProfilePhoto();
   const [currentStep, setCurrentStep] = useState(1); // Always start from step 1
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null); // Don't persist template selection
   const [results, setResults] = useState([]); // Don't persist results
   const [isFormatting, setIsFormatting] = useState(false);
-  const [darkMode, setDarkMode] = useState(savedDarkMode ? JSON.parse(savedDarkMode) : false);
 
   // Ensure fresh start on component mount
   useEffect(() => {
@@ -37,13 +35,6 @@ function App() {
   // No localStorage persistence - always start fresh
 
   // No browser history navigation - always start fresh
-
-  // Toggle dark mode
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem('darkMode', JSON.stringify(newMode));
-  };
 
   // Logout handler
   const handleLogout = () => {
@@ -144,7 +135,7 @@ function App() {
   ];
 
   return (
-    <div className={`App ${darkMode ? 'dark-mode' : ''} ${currentStep === 3 ? 'fullscreen-mode' : ''}`}>
+    <div className={`App ${currentStep === 3 ? 'fullscreen-mode' : ''}`}>
       {currentStep !== 3 && (
         <header className="header">
           <div className="header-content">
@@ -159,15 +150,11 @@ function App() {
             </div>
             <div className="header-actions">
               <div className="auth-controls">
-                <span className="user-info" title={userAccount?.username}>
-                  👤 {userName}
-                </span>
-                <button className="dark-mode-toggle" onClick={toggleDarkMode} title={darkMode ? 'Light Mode' : 'Dark Mode'}>
-                  {darkMode ? '☀️' : '🌙'}
-                </button>
-                <button className="logout-button" onClick={handleLogout} title="Sign out">
-                  🚪 Logout
-                </button>
+                <UserProfileDropdown
+                  userAccount={userAccount}
+                  onLogout={handleLogout}
+                  profilePhoto={photoUrl}
+                />
               </div>
             </div>
           </div>
@@ -190,7 +177,6 @@ function App() {
               onSelect={handleTemplateSelect}
               onDelete={handleTemplateDelete}
               onUpload={handleTemplateUpload}
-              darkMode={darkMode}
               onBack={null}
             />
           )}
@@ -211,8 +197,6 @@ function App() {
               results={results}
               onBack={() => setCurrentStep(2)}
               onStartOver={handleStartOver}
-              darkMode={darkMode}
-              toggleDarkMode={toggleDarkMode}
             />
           )}
         </div>

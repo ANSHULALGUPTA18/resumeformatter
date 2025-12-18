@@ -38,7 +38,7 @@ def extract_cai_contact_from_template(template_path: str) -> Optional[Dict[str, 
                 for cell in row.cells:
                     full_text += cell.text + "\n"
 
-        print(f"📄 Analyzing template for CAI contact...")
+        print("Analyzing template for CAI contact...")
 
         # Extract contact information
         contact_info = {
@@ -52,18 +52,18 @@ def extract_cai_contact_from_template(template_path: str) -> Optional[Dict[str, 
         has_info = any(contact_info.values())
 
         if has_info:
-            print(f"✅ CAI Contact detected:")
+            print("CAI Contact detected:")
             print(f"   Name: {contact_info['name']}")
             print(f"   Phone: {contact_info['phone']}")
             print(f"   Email: {contact_info['email']}")
             print(f"   State: {contact_info['state']}")
             return contact_info
         else:
-            print(f"⚠️ No CAI contact information found in template")
+            print("WARNING: No CAI contact information found in template")
             return None
 
     except Exception as e:
-        print(f"❌ Error extracting CAI contact: {e}")
+        print(f"ERROR: Error extracting CAI contact: {e}")
         return None
 
 

@@ -4,7 +4,13 @@
       "Bash(python app.py:*)",
       "Bash(curl:*)",
       "Bash(dir C:UsersSahithiDesktoptest_thumb.png)",
-      "Bash(az containerapp show:*)"
+      "Bash(az containerapp show:*)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(set:*)",
+      "Bash(timeout /t 3)"
     ],
     "deny": [],
     "ask": []
