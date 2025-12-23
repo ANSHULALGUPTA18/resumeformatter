@@ -19,6 +19,16 @@ from utils.doc_converter import convert_doc_to_docx, needs_conversion
 from utils.cai_contact_extractor import extract_cai_contact_from_template
 from utils.azure_storage import get_storage_manager
 
+# Import OCR modules (PaddleOCR-based, no OpenCV dependency)
+try:
+    from ocr import process_resume_image, process_resume_pdf
+    OCR_AVAILABLE = True
+    print("[OCR] ✅ PaddleOCR engine loaded successfully (Windows-safe, high accuracy)")
+except ImportError as e:
+    OCR_AVAILABLE = False
+    print(f"[OCR] ❌ OCR engine not available: {e}")
+    print(f"[OCR] Install PaddleOCR with: pip install paddleocr paddlepaddle scipy")
+
 # Import routes
 from routes.onlyoffice_routes import onlyoffice_bp
 
@@ -473,6 +483,97 @@ def upload_template():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/ocr-extract', methods=['POST'])
+def ocr_extract():
+    """Extract resume data from image using PaddleOCR (high accuracy, Windows-safe)"""
+    try:
+        if not OCR_AVAILABLE:
+            return jsonify({
+                'success': False,
+                'message': 'PaddleOCR engine not available. Install with: pip install paddleocr paddlepaddle scipy'
+            }), 500
+
+        if 'resume_file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file provided'}), 400
+
+        file = request.files['resume_file']
+
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
+
+        # Save the uploaded file temporarily
+        filename = secure_filename(file.filename)
+        file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+
+        if file_ext not in ['png', 'jpg', 'jpeg', 'pdf', 'tiff', 'tif']:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid file type. Supported: PNG, JPG, JPEG, PDF, TIFF'
+            }), 400
+
+        # Save file
+        temp_id = str(uuid.uuid4())
+        temp_filename = f"{temp_id}_{filename}"
+        temp_path = os.path.join(Config.RESUME_FOLDER, temp_filename)
+        file.save(temp_path)
+
+        print(f"\n{'='*70}")
+        print(f"🔍 OCR EXTRACTION STARTED")
+        print(f"{'='*70}")
+        print(f"📄 File: {filename}")
+        print(f"📁 Type: {file_ext.upper()}")
+        print(f"{'='*70}\n")
+
+        try:
+            # Process based on file type
+            if file_ext == 'pdf':
+                print("📖 Processing PDF with OCR...")
+                result = process_resume_pdf(temp_path)
+            else:
+                print("🖼️ Processing image with OCR...")
+                result = process_resume_image(temp_path)
+
+            # Clean up temporary file
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+            print(f"\n{'='*70}")
+            print(f"✅ OCR EXTRACTION COMPLETED")
+            print(f"{'='*70}")
+            print(f"👤 Name: {result['candidate_info'].get('name', 'N/A')}")
+            print(f"📧 Email: {result['candidate_info'].get('email', 'N/A')}")
+            print(f"📱 Phone: {result['candidate_info'].get('phone', 'N/A')}")
+            print(f"📊 Quality Score: {result['quality_scores']['overall']:.2f}")
+            print(f"⏱️ Processing Time: {result.get('processing_time', 0):.2f}s")
+            print(f"{'='*70}\n")
+
+            return jsonify({
+                'success': True,
+                'data': result,
+                'message': 'OCR extraction completed successfully'
+            })
+
+        except Exception as e:
+            # Clean up on error
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+
+            print(f"❌ OCR extraction failed: {e}")
+            traceback.print_exc()
+            return jsonify({
+                'success': False,
+                'message': f'OCR extraction failed: {str(e)}'
+            }), 500
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 
 @app.route('/api/format', methods=['POST'])
 def format_resumes():

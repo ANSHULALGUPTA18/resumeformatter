@@ -24,6 +24,16 @@ except ImportError:
     INTELLIGENT_PARSER_AVAILABLE = False
     print("⚠️  Intelligent parser not available, using basic matching")
 
+# Import OCR for image file support
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ocr'))
+    from advanced_resume_ocr import process_resume_image, process_resume_pdf, process_resume_docx
+    OCR_AVAILABLE = True
+except ImportError as e:
+    OCR_AVAILABLE = False
+    print(f"[WARN] OCR not available: {e}")
+
 class ResumeParser:
     """Comprehensive resume parsing"""
     
@@ -56,10 +66,32 @@ class ResumeParser:
         print(f"\n{'='*70}")
         print(f"📋 PARSING RESUME: {self.file_path.split('/')[-1]}")
         print(f"{'='*70}\n")
-        
+
+        # Check if file is an image and use OCR
+        if self.file_type in ['png', 'jpg', 'jpeg', 'tiff', 'tif', 'bmp']:
+            if OCR_AVAILABLE:
+                print("🔍 Detected image file - using OCR extraction...")
+                return self._parse_with_ocr()
+            else:
+                print("❌ Image file detected but OCR not available")
+                return self._empty_resume_data()
+
         # Extract text
         if self.file_type == 'pdf':
+            # Try normal PDF text extraction first
             self.raw_text = self._extract_pdf_text()
+            # If text is minimal, it might be a scanned PDF - use OCR
+            if OCR_AVAILABLE and (not self.raw_text or len(self.raw_text.strip()) < 100):
+                print("🔍 Detected scanned PDF - using OCR extraction...")
+                return self._parse_with_ocr()
+        elif self.file_type in ['docx', 'doc']:
+            # Check if DOCX has embedded images
+            has_images = self._check_docx_has_images()
+            if has_images and OCR_AVAILABLE:
+                print("🔍 Detected DOCX with embedded images - using OCR extraction...")
+                return self._parse_with_docx_ocr()
+            else:
+                self.raw_text = self._extract_docx_text()
         else:
             self.raw_text = self._extract_docx_text()
         
@@ -1663,6 +1695,159 @@ class ResumeParser:
         # Default: space join
         return (prev + ' ' + curr).strip()
     
+    def _check_docx_has_images(self):
+        """Check if DOCX file has embedded images"""
+        try:
+            doc = Document(self.file_path)
+            # Check relationships for images
+            image_count = sum(1 for rel in doc.part.rels.values() if 'image' in rel.target_ref)
+            return image_count > 0
+        except Exception as e:
+            print(f"[WARN] Error checking DOCX for images: {e}")
+            return False
+
+    def _parse_with_docx_ocr(self):
+        """Parse DOCX resume with embedded images using OCR"""
+        try:
+            print("[INFO] Processing DOCX with embedded images using PaddleOCR...")
+            ocr_result = process_resume_docx(self.file_path)
+
+            # Convert OCR result to standard resume data format
+            resume_data = {
+                'name': ocr_result['candidate_info'].get('name', ''),
+                'email': ocr_result['candidate_info'].get('email', ''),
+                'phone': ocr_result['candidate_info'].get('phone', ''),
+                'address': ocr_result['candidate_info'].get('location', ''),
+                'linkedin': ocr_result['candidate_info'].get('linkedin', ''),
+                'dob': '',  # OCR doesn't extract DOB yet
+                'summary': ocr_result['sections'].get('SUMMARY', ''),
+                'experience': self._ocr_experience_to_list(ocr_result['sections'].get('EMPLOYMENT', '')),
+                'education': self._ocr_education_to_list(ocr_result['sections'].get('EDUCATION', '')),
+                'skills': self._ocr_skills_to_list(ocr_result['sections'].get('SKILLS', '')),
+                'projects': self._ocr_section_to_list(ocr_result['sections'].get('PROJECTS', '')),
+                'certifications': self._ocr_section_to_list(ocr_result['sections'].get('CERTIFICATIONS', '')),
+                'awards': [],  # Not extracted by OCR
+                'languages': [],  # Not extracted by OCR
+                'sections': ocr_result['sections'],
+                'raw_text': '\n\n'.join([f"{k}:\n{v}" for k, v in ocr_result['sections'].items()]),
+                'ocr_quality': ocr_result['quality_scores']['overall'],
+                'ocr_warnings': ocr_result.get('warnings', [])
+            }
+
+            print(f"[SUCCESS] DOCX OCR extraction completed - Quality: {resume_data['ocr_quality']:.2f}")
+            print(f"[INFO] Extracted name: {resume_data['name']}")
+            print(f"[INFO] Sections found: {list(ocr_result['sections'].keys())}")
+            return resume_data
+
+        except Exception as e:
+            print(f"[ERROR] DOCX OCR parsing failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._empty_resume_data()
+
+    def _parse_with_ocr(self):
+        """Parse resume using OCR for image files"""
+        try:
+            # Process with OCR based on file type
+            if self.file_type == 'pdf':
+                ocr_result = process_resume_pdf(self.file_path)
+            else:
+                ocr_result = process_resume_image(self.file_path)
+
+            # Convert OCR result to standard resume data format
+            resume_data = {
+                'name': ocr_result['candidate_info'].get('name', ''),
+                'email': ocr_result['candidate_info'].get('email', ''),
+                'phone': ocr_result['candidate_info'].get('phone', ''),
+                'address': ocr_result['candidate_info'].get('location', ''),
+                'linkedin': ocr_result['candidate_info'].get('linkedin', ''),
+                'dob': '',  # OCR doesn't extract DOB yet
+                'summary': ocr_result['sections'].get('SUMMARY', ''),
+                'experience': self._ocr_experience_to_list(ocr_result['sections'].get('EMPLOYMENT', '')),
+                'education': self._ocr_education_to_list(ocr_result['sections'].get('EDUCATION', '')),
+                'skills': self._ocr_skills_to_list(ocr_result['sections'].get('SKILLS', '')),
+                'projects': self._ocr_section_to_list(ocr_result['sections'].get('PROJECTS', '')),
+                'certifications': self._ocr_section_to_list(ocr_result['sections'].get('CERTIFICATIONS', '')),
+                'awards': [],  # Not extracted by OCR
+                'languages': [],  # Not extracted by OCR
+                'sections': ocr_result['sections'],
+                'raw_text': '\n\n'.join([f"{k}:\n{v}" for k, v in ocr_result['sections'].items()]),
+                'ocr_quality': ocr_result['quality_scores']['overall'],
+                'ocr_warnings': ocr_result.get('warnings', [])
+            }
+
+            print(f"✅ OCR extraction completed - Quality: {resume_data['ocr_quality']:.2f}")
+            return resume_data
+
+        except Exception as e:
+            print(f"❌ OCR parsing failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._empty_resume_data()
+
+    def _ocr_experience_to_list(self, text):
+        """Convert OCR experience text to list format"""
+        if not text:
+            return []
+        # Simple conversion - split by double newlines
+        experiences = []
+        entries = text.split('\n\n')
+        for entry in entries:
+            if len(entry.strip()) > 20:
+                experiences.append({'raw': entry.strip()})
+        return experiences
+
+    def _ocr_education_to_list(self, text):
+        """Convert OCR education text to list format"""
+        if not text:
+            return []
+        education = []
+        entries = text.split('\n\n')
+        for entry in entries:
+            if len(entry.strip()) > 10:
+                education.append({'raw': entry.strip()})
+        return education
+
+    def _ocr_skills_to_list(self, text):
+        """Convert OCR skills text to list format"""
+        if not text:
+            return []
+        # Split by commas, newlines, or bullets
+        skills = re.split(r'[,\n•·]', text)
+        return [s.strip() for s in skills if s.strip() and len(s.strip()) > 2]
+
+    def _ocr_section_to_list(self, text):
+        """Convert generic OCR section text to list format"""
+        if not text:
+            return []
+        items = []
+        entries = text.split('\n\n')
+        for entry in entries:
+            if len(entry.strip()) > 10:
+                items.append({'raw': entry.strip()})
+        return items
+
+    def _empty_resume_data(self):
+        """Return empty resume data structure"""
+        return {
+            'name': '',
+            'email': '',
+            'phone': '',
+            'address': '',
+            'linkedin': '',
+            'dob': '',
+            'summary': '',
+            'experience': [],
+            'education': [],
+            'skills': [],
+            'projects': [],
+            'certifications': [],
+            'awards': [],
+            'languages': [],
+            'sections': {},
+            'raw_text': ''
+        }
+
     def _print_parsing_summary(self, data):
         """Print parsing summary"""
         print(f"👤 Name: {data['name']}")
